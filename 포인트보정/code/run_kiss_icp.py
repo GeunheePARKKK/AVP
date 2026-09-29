@@ -122,8 +122,11 @@ def main():
     tum = os.path.join(args.out, "poses_tum.txt")
     np.savetxt(kitti, poses[:, :3, :].reshape(len(poses), 12), fmt="%.9e")
 
-    times = ds.get_frames_timestamps()[:len(poses)]
-    with open(tum, "w") as f:
+    # 자세는 '스캔 끝' 시각의 것이다 (KISS-ICP 가 점을 그 시각으로 되돌린다).
+    # 시작 시각을 적으면 궤적이 100 ms 앞당겨져 카메라 시각과 맞출 때 그대로 오차가 된다.
+    times = (ds.get_pose_timestamps() if hasattr(ds, "get_pose_timestamps")
+             else ds.get_frames_timestamps())[:len(poses)]
+    with open(tum, "w", encoding="utf-8") as f:
         for t, T in zip(times, poses):
             qx, qy, qz, qw = rot_to_quat(T[:3, :3])
             x, y, z = T[:3, 3]
@@ -139,7 +142,7 @@ def main():
                f"이동 거리    {dist:.3f} m\n"
                f"스캔당 이동  평균 {step.mean():.4f} m, 최대 {step.max():.4f} m\n"
                f"시작→끝 직선 {np.linalg.norm(poses[-1][:3, 3] - poses[0][:3, 3]):.3f} m\n")
-    with open(os.path.join(args.out, "summary.txt"), "w") as f:
+    with open(os.path.join(args.out, "summary.txt"), "w", encoding="utf-8") as f:
         f.write(summary)
     print(summary, end="")
     print(f"저장: {kitti}\n      {tum}")

@@ -1,0 +1,7 @@
+pcap        C:\Users\super\AppData\Local\Temp\claude\C--Windows-System32\75f694b2-ca72-4f6b-b488-29719481ff1a\scratchpad\lcc_new\포인트보정\data\session_013\lidar.pcap
+scans       201
+deskew      True
+max_range   100.0
+이동 거리    33.256 m
+스캔당 이동  평균 0.1663 m, 최대 0.2623 m
+시작→끝 직선 28.164 m

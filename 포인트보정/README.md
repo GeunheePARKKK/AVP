@@ -79,6 +79,20 @@ python3 run_kiss_icp.py ../data/session_013/lidar.pcap --no-deskew   # 비교용
 python3 export_scans.py ../data/session_013/lidar.pcap -o /tmp/scans   # (x,y,z,t) npy
 ```
 
+점검 · 그림 · 카메라 셔터 시각 기준 보정(발표자료 Step 3 ~ 5):
+
+```bash
+python3 analyze_deskew.py  ../data/session_013/lidar.pcap --poses ../results/deskew_on
+python3 plot_results.py    ../data/session_013/lidar.pcap --on ../results/deskew_on --off ../results/deskew_off
+python3 deskew_to_shutter.py ../data/session_013/lidar.pcap --poses ../results/deskew_on --save
+```
+
+`deskew_to_shutter.py` 가 카메라 4대분 '셔터 순간 포인트클라우드' 를 만든다. session_013 은 free-run 이라
+셔터 시각은 A안 가정값(0 / 25 / 50 / 75 ms)이다. 실제 로그가 있으면 `CAMERAS` 상수만 바꾸면 된다.
+
+수집과 가공 때 확인할 것: [`docs/수집_가공_체크리스트.md`](docs/수집_가공_체크리스트.md)
+2026-09-29 실행 기록과 그림: [`results/2026-09-29_session_013/RESULTS.md`](results/2026-09-29_session_013/RESULTS.md)
+
 ---
 
 ## 실제로 돌려본 결과

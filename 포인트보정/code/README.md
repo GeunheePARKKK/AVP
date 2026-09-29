@@ -6,6 +6,9 @@
 | `vlp16_dataset.py` | pcap → KISS-ICP 데이터셋. 회전 단위로 끊고 점별 시각을 0~1 로 정규화 |
 | `run_kiss_icp.py` | KISS-ICP 실행 → `poses_kitti.txt`, `poses_tum.txt`, `summary.txt` |
 | `export_scans.py` | pcap → 스캔별 `(x,y,z,t)` npy 또는 KITTI `.bin` |
+| `analyze_deskew.py` | 스캔 안 움직임·지도 정합 오차 측정, 보정식이 KISS-ICP 내부 보정과 같은지 검산 |
+| `plot_results.py` | 궤적 · 스캔별 오차 · 보정 전후 그림 (SVG + PNG) |
+| `deskew_to_shutter.py` | 카메라 셔터 시각 기준 보정 (Step 3 · 4 · 5) → 카메라별 포인트클라우드 |
 
 ## 필요한 것
 

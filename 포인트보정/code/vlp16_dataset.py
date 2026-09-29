@@ -55,6 +55,12 @@ class VLP16PcapDataset:
         wrap = np.concatenate(([0], np.cumsum(np.diff(t0) < -1800.0))) * 3600.0
         self.scan_times = t0 + wrap
 
+        # 회전이 걸린 시간. KISS-ICP 는 점을 '스캔 끝' 시각으로 되돌리고 자세도 그 시각 기준이라
+        # (t=1 인 점이 보정 후 제자리인 것으로 확인), 자세에 붙일 시각은 시작이 아니라 끝이다.
+        self.scan_spans = np.array([self._time[a:b][-1] - self._time[a:b][0]
+                                    for a, b in self._spans])
+        self.scan_end_times = self.scan_times + self.scan_spans
+
         self.sequence_id = "session_013"
 
     def __len__(self):
@@ -72,5 +78,12 @@ class VLP16PcapDataset:
         return points, timestamps
 
     def get_frames_timestamps(self):
-        """KISS-ICP 가 궤적을 TUM 형식으로 저장할 때 쓰는 스캔별 시각."""
+        """스캔이 시작된 시각 (회전의 첫 점)."""
         return self.scan_times
+
+    def get_pose_timestamps(self):
+        """자세가 가리키는 시각 = 스캔이 끝난 시각. TUM 으로 저장할 때는 이쪽을 쓴다.
+
+        카메라 셔터 시각으로 자세를 보간하려면(B안 Step 3) 이 값이 맞아야 한다.
+        시작 시각을 쓰면 궤적 전체가 한 스캔(100 ms)만큼 앞당겨진다."""
+        return self.scan_end_times
