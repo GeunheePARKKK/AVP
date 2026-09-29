@@ -1,0 +1,115 @@
+# 포인트보정 — KISS-ICP deskew 용 라이다 원본
+
+주차장에서 20초 주행하며 찍은 VLP-16 스캔 한 세션. **점별 시각이 붙은 포인트클라우드**를 KISS-ICP 에 넣어 모션 왜곡(skew)을 펴고 오도메트리를 얻는 데 필요한 것만 담았다.
+
+녹화: 2026-09-13 14:13:22 ~ 14:13:42 · 세션 `session_013`
+
+---
+
+## 왜 카메라가 없나
+
+이 세션은 **하드웨어 동기도 캘리브레이션도 하지 않은 자유 구동(free-run)** 녹화다 (`data/session_013/meta.json` 의 `"mode"`). deskew 는 라이다 한 대의 점별 시각만으로 성립하므로 카메라 프레임은 쓰이지 않는다.
+
+원본 세션은 3.9 GB 다. 대부분이 카메라다.
+
+| 구성 | 용량 | 여기 포함 |
+|---|---|---|
+| `rosbag_0.db3` (카메라 4대 + 라이다) | 2.0 GB | ✗ |
+| `cam1`~`cam4` 원본 `.npy` 200장 × 4 | 1.9 GB | ✗ |
+| `full_20s.mp4`, `preview.mp4` | 35 MB | ✗ |
+| **`lidar.pcap`** | **20 MB** | ✓ |
+| `meta.json` | 4 KB | ✓ |
+
+카메라 이미지와 rosbag 은 연구실 노트북 `~/ros2_ws/cam_lidar_recording/sessions/session_013` 에 그대로 있다.
+
+---
+
+## 점별 시각은 어디서 나오나
+
+VLP-16 은 점마다 타임스탬프를 패킷에 써주지 않는다. 대신 발사 순서가 고정이라 패킷 타임스탬프에서 정확히 계산된다.
+
+- 시퀀스 간격 55.296 µs, 채널 간격 2.304 µs
+- 패킷당 12블록 × 2시퀀스 × 16채널 = 384점, 블록 간격 110.592 µs
+- 점별 시각 = 패킷 타임스탬프 + 블록·시퀀스·채널 오프셋
+
+`code/vlp16.py` 가 이 계산을 해서 `Decoded.time` (회전 시작 기준 상대 초) 에 넣고, `code/vlp16_dataset.py` 가 그것을 KISS-ICP 규약인 0~1 정규화 값으로 바꿔 넘긴다. 방위각도 같은 방식으로 블록 사이를 보간하므로 회전 왜곡이 이미 한 번 펴진 상태다.
+
+---
+
+## 데이터
+
+```
+data/session_013/
+├── lidar.pcap     20 MB · 15,087 패킷 · 데이터 포트 2368
+└── meta.json      센서 설정, 패킷 통계, 프레임 수
+```
+
+디코딩 검증 결과 (`python3 code/vlp16.py data/session_013/lidar.pcap`):
+
+| 항목 | 값 |
+|---|---|
+| 모델 / 반사 모드 | VLP-16 / Strongest (단일 반사) |
+| 총 점 | 5,400,646 |
+| 회전(스캔) 수 | **201** |
+| 회전당 점 수 | 중앙값 26,930 (최소 10,762, 최대 27,413) |
+| 스캔 내 점별 시각 | 0 ~ 0.0999 초, 단조증가 |
+| 스캔 간격 | 평균 0.0999 초 (10 Hz) |
+| 링 | 16개 전부 존재 |
+| 패킷 유실 | 0 |
+
+첫 회전과 마지막 회전은 녹화 시작·종료가 회전 중간에 걸려 반 토막이다. `vlp16_dataset.py` 가 `min_points` 로 걸러낸다.
+
+---
+
+## 돌리는 법
+
+```bash
+pip install kiss-icp numpy
+
+cd code
+python3 run_kiss_icp.py ../data/session_013/lidar.pcap
+python3 run_kiss_icp.py ../data/session_013/lidar.pcap --no-deskew   # 비교용
+```
+
+`../results/session_013/` 에 `poses_kitti.txt`, `poses_tum.txt`, `summary.txt` 가 남는다. `--save-deskewed` 를 주면 보정된 스캔도 `deskewed/00000.npy` 로 저장된다 (스캔당 약 300 KB).
+
+보정된 점만 따로 쓰려면:
+
+```bash
+python3 export_scans.py ../data/session_013/lidar.pcap -o /tmp/scans   # (x,y,z,t) npy
+```
+
+---
+
+## 실제로 돌려본 결과
+
+KISS-ICP 1.3.0, 기본 설정, `max_range=100`, 201 스캔 전부.
+
+| | deskew 켬 | 끔 |
+|---|---|---|
+| 이동 거리 | **33.256 m** | 32.493 m |
+| 스캔당 이동 (평균 / 최대) | 0.1663 / 0.2623 m | 0.1625 / 0.2620 m |
+| 시작 → 끝 직선거리 | 28.164 m | 28.106 m |
+
+20초에 33 m 이므로 평균 약 6 km/h. 저속 주행이라 deskew 차이가 2.3% 수준으로 작다. 스캔당 최대 0.26 m 를 움직였는데 한 스캔이 0.1초에 걸쳐 찍히므로, 보정하지 않으면 한 스캔 안에서 최대 그만큼 점이 끌린다. **차이는 직선 구간보다 회전 구간에서 크게 벌어진다.**
+
+---
+
+## KISS-ICP 버전 주의
+
+`KissICP` 의 pose 접근 방식이 버전마다 다르다.
+
+| 버전 | 누적 pose |
+|---|---|
+| 1.3.x | `odom.last_pose` (매 프레임 직접 모아야 함), `register_frame` 이 `(보정된 스캔, 정합에 쓴 점)` 반환 |
+| 1.0 ~ 1.2 | `odom.poses` 에 전부 쌓임 |
+
+`run_kiss_icp.py` 는 양쪽을 다 처리한다. `load_config` 의 인자 형태도 버전별로 갈려서 같이 분기해 두었다.
+
+또한 **KISS-ICP 의 기본 로더는 Velodyne pcap 을 읽지 못한다** (rosbag, KITTI, Ouster pcap, `.ply`/`.bin` 디렉터리만 지원). 그래서 `vlp16_dataset.py` 가 필요하다.
+
+---
+
+## 다른 세션
+
+같은 날 같은 조건으로 `session_008` ~ `session_013` 여섯 개를 찍었다 (각 20초). 전부 연구실 노트북에 있고, 필요하면 pcap 만 같은 방식으로 꺼내면 된다 — 세션당 20 MB.

@@ -1,0 +1,93 @@
+{
+  "created": "2026-09-13T14:17:00",
+  "duration_s": 20.0,
+  "format": "npy",
+  "mode": "free-run (MCU 없음, 하드웨어 동기 없음)",
+  "trigger_hz": 10.0,
+  "lidar": {
+    "ip": "192.168.1.201",
+    "model": "VLP-16",
+    "data_port": 2368,
+    "position_port": 8308,
+    "path": "/home/acelab/ros2_ws/cam_lidar_recording/sessions/session_013/lidar.pcap",
+    "packets_written": 17840,
+    "bytes_written": 20353738,
+    "data_packets": 15087,
+    "host_span_s": 20.021,
+    "lidar_span_s": 20.021,
+    "first_host_unix": 1789276620.4230144,
+    "last_host_unix": 1789276640.4444413,
+    "first_lidar_us": 1388108630,
+    "last_lidar_us": 1408129328,
+    "recv": 17861,
+    "dropped_queue": 0,
+    "expected_data_packets": 15096
+  },
+  "cameras": [
+    {
+      "name": "CAM1",
+      "sn": "FHH26070137",
+      "index": 0,
+      "width": 2048,
+      "height": 1200,
+      "pixel_format": "BayerGB8",
+      "exposure_us": 8000.0,
+      "gain_db": 16.0
+    },
+    {
+      "name": "CAM2",
+      "sn": "FHH26070138",
+      "index": 1,
+      "width": 2048,
+      "height": 1200,
+      "pixel_format": "BayerGB8",
+      "exposure_us": 8000.0,
+      "gain_db": 16.0
+    },
+    {
+      "name": "CAM3",
+      "sn": "FHH26070139",
+      "index": 2,
+      "width": 2048,
+      "height": 1200,
+      "pixel_format": "BayerGB8",
+      "exposure_us": 8000.0,
+      "gain_db": 16.0
+    },
+    {
+      "name": "CAM4",
+      "sn": "FHH26070140",
+      "index": 3,
+      "width": 2048,
+      "height": 1200,
+      "pixel_format": "BayerGB8",
+      "exposure_us": 8000.0,
+      "gain_db": 16.0
+    }
+  ],
+  "trigger": {
+    "mode": "Off",
+    "source": "free-run",
+    "fps_requested": 10.0,
+    "fps_resulting": [
+      10.0,
+      10.0,
+      10.0,
+      10.0
+    ]
+  },
+  "camera_slots": [
+    1,
+    2,
+    3,
+    4
+  ],
+  "stopped": "2026-09-13T14:17:20",
+  "frames_written": {
+    "cam1": 200,
+    "cam2": 200,
+    "cam3": 201,
+    "cam4": 200
+  },
+  "frames_late": 1
+}
