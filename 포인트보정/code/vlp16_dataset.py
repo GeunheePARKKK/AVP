@@ -57,6 +57,11 @@ class VLP16PcapDataset:
 
         # 회전이 걸린 시간. KISS-ICP 는 점을 '스캔 끝' 시각으로 되돌리고 자세도 그 시각 기준이라
         # (t=1 인 점이 보정 후 제자리인 것으로 확인), 자세에 붙일 시각은 시작이 아니라 끝이다.
+        # 라이다 내부 시계(정시 이후 초) ↔ 호스트 유닉스 시각 대응.
+        # 카메라 frames.csv 는 유닉스 시각이라 둘을 이어야 비교가 된다.
+        self.scan_host_times = np.array([d.host_ts[a] for a, _ in self._spans])
+        self.host_offset = float(np.median(self.scan_host_times - self.scan_times))
+
         self.scan_spans = np.array([self._time[a:b][-1] - self._time[a:b][0]
                                     for a, b in self._spans])
         self.scan_end_times = self.scan_times + self.scan_spans
