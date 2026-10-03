@@ -1,0 +1,7 @@
+pcap        /home/acelab/ros2_ws/cam_lidar_recording/sessions/session_025/lidar.pcap
+scans       251
+deskew      True
+max_range   100.0
+이동 거리    28.127 m
+스캔당 이동  평균 0.1125 m, 최대 0.1839 m
+시작→끝 직선 27.809 m
