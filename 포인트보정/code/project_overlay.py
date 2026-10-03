@@ -37,7 +37,9 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)
 import vlp16  # noqa: E402
 
-CALIB_DIR = "/home/acelab/Documents/Lidar_Camera_Calibration/calib_result"
+# 저장소 이름이 바뀌어도 동작하도록 이 파일 위치에서 거슬러 올라간다
+_REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+CALIB_DIR = os.environ.get("CALIB_DIR", os.path.join(_REPO, "calib_result"))
 AVP_DIR = "/home/acelab/Documents/TalkFile_AVP_calib"
 USB_LATENCY_S = 0.0071          # 센서 읽기 + USB3 전송, 이 리그 실측
 

@@ -1,4 +1,4 @@
-# Lidar_Camera_Calibration
+# AVP
 
 카메라 4대 + Velodyne VLP-16 으로 자율주행 데이터셋을 만드는 작업 저장소.
 수집 → 캘리브레이션 → 시간동기화 → 포인트 보정 → 3D bounding box 라벨링까지의 전 과정을 담는다.

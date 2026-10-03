@@ -35,7 +35,8 @@ from vlp16_dataset import VLP16PcapDataset
 from analyze_deskew import load_poses, yaw_of
 from deskew_to_shutter import pose_at, deskew_to, gather, fov_mask
 
-CALIB = "/home/acelab/Documents/Lidar_Camera_Calibration/calib_result/extrinsics_all.yaml"
+_REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+CALIB = os.environ.get("CALIB", os.path.join(_REPO, "calib_result", "extrinsics_all.yaml"))
 USB_LATENCY_S = 0.0071
 FOV_HALF = 45.0
 
@@ -68,6 +69,64 @@ def camera_table(session):
     return out
 
 
+def gather_full(ds, k, t_s, window=0.05):
+    """gather() 와 같되 강도(intensity)까지 같이 모은다."""
+    P, T, I = [], [], []
+    inten = getattr(ds, "intensity", None)
+    for j in (k - 1, k, k + 1):
+        if not 0 <= j < len(ds):
+            continue
+        a, b = ds._spans[j]
+        tau = ds._time[a:b] - ds._time[a]
+        ta = ds.scan_times[j] + tau
+        m = np.abs(ta - t_s) <= window
+        if m.any():
+            P.append(ds._xyz[a:b][m])
+            T.append(ta[m])
+            I.append(inten[a:b][m] if inten is not None
+                     else np.zeros(int(m.sum()), np.float32))
+    if not P:
+        return None, None, None
+    return np.concatenate(P), np.concatenate(T), np.concatenate(I)
+
+
+def save_all(ds, poses, tend, off, cams, outdir):
+    """카메라 × 프레임 전부를 그 셔터 순간의 클라우드로 저장한다."""
+    import json as _json
+    manifest = {"source": "shutter_real.py", "cameras": {}}
+    total = 0
+    for c in cams:
+        cdir = os.path.join(outdir, c["name"])
+        os.makedirs(cdir, exist_ok=True)
+        entries = []
+        for f in range(len(c["shutter"])):
+            t_s = float(c["shutter"][f]) - off
+            k = int(np.argmin(np.abs(ds.scan_times - t_s)))
+            pts, ta, inten = gather_full(ds, k, t_s)
+            if pts is None or len(pts) < 100:
+                continue
+            fixed = deskew_to(pts, ta, poses, tend, t_s)
+            arr = np.column_stack([fixed, inten]).astype(np.float32)
+            fid = c["frame_ids"][f]
+            np.save(os.path.join(cdir, f"{fid:08d}.npy"), arr)
+            entries.append({"frame": f, "frame_id": int(fid),
+                            "shutter_unix": float(c["shutter"][f]),
+                            "scan": k, "points": int(len(arr)),
+                            "moved_median_m": float(np.median(
+                                np.linalg.norm(fixed - pts, axis=1)))})
+            total += 1
+            if (f + 1) % 50 == 0:
+                print(f"  {c['name']} {f+1}/{len(c['shutter'])}", flush=True)
+        manifest["cameras"][c["name"]] = {
+            "folder": c["folder"], "serial": c["serial"],
+            "position": c["position"], "fov_center_deg": c["az"],
+            "frames": entries}
+        print(f"  {c['name']}: {len(entries)} 장", flush=True)
+    with open(os.path.join(outdir, "manifest.json"), "w") as f:
+        _json.dump(manifest, f, indent=2, ensure_ascii=False)
+    print(f"총 {total} 장 저장: {outdir}")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("session")
@@ -76,6 +135,9 @@ def main():
     ap.add_argument("--n-eval", type=int, default=12)
     ap.add_argument("--save-frame", type=int, default=None,
                     help="이 카메라 프레임 번호의 클라우드를 npy 로 저장")
+    ap.add_argument("--save-all", default=None,
+                    help="카메라 × 프레임 전부를 이 폴더에 저장 (x,y,z,intensity)")
+    ap.add_argument("--skip-eval", action="store_true", help="통계 생략")
     args = ap.parse_args()
 
     ds = VLP16PcapDataset(os.path.join(args.session, "lidar.pcap"))
@@ -95,6 +157,12 @@ def main():
         d = (c["shutter"][:m] - base[:m]) * 1000
         print(f"  {c['name']} ({c['position']:5s}, 시야중심 {c['az']:5.1f}°) "
               f"프레임 {len(c['shutter']):3d} · {cams[0]['name']} 대비 {d.mean():+6.1f} ms (±{d.std():.1f})")
+
+    if args.save_all:
+        os.makedirs(args.save_all, exist_ok=True)
+        save_all(ds, poses, tend, off, cams, args.save_all)
+        if args.skip_eval:
+            return
 
     # 평가 스캔 고르기 (직선 / 회전)
     yaws = np.zeros(n)
