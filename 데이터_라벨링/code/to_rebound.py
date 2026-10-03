@@ -174,7 +174,9 @@ def main():
                 l_, w_, h_ = bx["size"]
                 yaw = bx["yaw"]
                 out.append({"origin": [cx, cy, cz + h_ / 2],   # 바닥중심 → 중심
-                            "size": [l_, w_, h_],
+                            # ReBound 는 W,L,H 순서다 (dataformat_utils.py:147).
+                            # mmdet3d 는 dx(길이), dy(폭) 순이므로 맞바꾼다.
+                            "size": [w_, l_, h_],
                             "rotation": [float(np.cos(yaw / 2)), 0.0, 0.0,
                                          float(np.sin(yaw / 2))],
                             "annotation": bx["class"],
