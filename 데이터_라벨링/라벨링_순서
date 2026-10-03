@@ -1,0 +1,38 @@
+자율주행 데이터셋 논문의 Methodology(데이터 수집·전처리·라벨링·품질 관리) 구성을 위한 대표적인 데이터 가공 관련 논문들과 핵심 내용을 카테고리별로 정해 정리해 두었습니다.
+1. 자동 라벨링 및 파이프라인 (Auto-Labeling Pipelines)
+수동 라벨링 비용을 줄이고 3D Bounding Box 및 세그멘테이션을 정밀하게 자동 생성하는 프레임워크를 다룬 논문입니다.
+ * Offboard 3D Object Detection from Point Cloud Sequences (CVPR 2021, Waymo)
+   * 핵심 내용: 실시간 온보드(Onboard) 제약에서 벗어나, 데이터 수집 후 전체 라이더 포인트 클라우드 시퀀스(전후방 프레임)와 센서 포즈를 활용하는 Offboard 3D Auto-Labeling 프레임워크를 제안합니다.
+   * 가공 포인트: 정적 객체(Static)와 동적 객체(Dynamic)를 분리하여 정적 객체는 시퀀스 전체 포인트를 병합해 고밀도 포인트 클라우드로 라벨링하고, 동적 객체는 시퀀스 보정을 거쳐 인간 라벨러 수준의 3D Box를 자동 생성합니다.
+ * 4D-CAAL: 4D Radar-Camera Calibration and Auto-Labeling for Autonomous Driving (2026)
+   * 핵심 내용: 센서 간 정밀 캘리브레이션과 카메라인스턴스 세그멘테이션 결과를 이종 센서(4D Radar/LiDAR)로 자동 전파(Transfer)하는 파이프라인을 제시합니다.
+   * 가공 포인트: 시공간 동기화(Spatio-temporal synchronization) 후 2D 영역 라벨을 3D 공간으로 자동 매핑하는 Coarse-to-fine 프로세스를 설명합니다.
+2. 데이터셋 생성 전략 및 큐레이션 (Dataset Curation & Strategy)
+raw 데이터에서 유의미한 프레임을 선별하고 데이터 품질을 확보하는 가공 방법론입니다.
+ * Creating Impactful Autonomous Driving Datasets: A Strategic Guide from Research Gap to Benchmark (2026)
+   * 핵심 내용: 데이터셋 기획부터 센서 선택, 데이터 가공 연산자(Data Operators: 재라벨링, 데이터 합성, 실제 수집), 데이터 큐레이션, 비용 트레이드오프까지 통합 제시하는 지침서입니다.
+   * 가공 포인트: 단순 다량 수집이 아닌 Long-tail 엣지 케이스 선별(Data Selection) 및 불균형 해소를 위한 가공 체계를 정립하는 프레임워크를 제공합니다.
+ * nuScenes: A multimodal dataset for autonomous driving (CVPR 2020)
+   * 핵심 내용: 대표적인 멀티모달 자율주행 데이터셋 논문으로, 데이터 수집 프로세스와 전처리/라벨링 가이드라인이 명확히 기술되어 있습니다.
+   * 가공 포인트: 20Hz LiDAR와 12Hz Camera의 시공간 동기화, Monte Carlo Localization 기반 Ego-motion 보정, 2Hz Keyframe 추출 및 샘플링 기준, 개인정보 보호(얼굴·번호판 블러링) 전처리 및 3D Bounding Box 품질 검수(QC) 절차를 기술하고 있습니다.
+3. 고차원 표현 확장 가공 (Occupancy & Dense Grid Auto-Generation)
+기존의 3D Bounding Box 라벨을 3D Occupancy Voxel Grid 등 고차원 라벨로 확장 가공하는 방법론입니다.
+ * Occ3D: A Large-Scale 3D Occupancy Prediction Benchmark for Autonomous Driving (NeurIPS 2023 / TPAMI)
+   * 핵심 내용: nuScenes 데이터를 기반으로 희소한(Sparse) LiDAR 포인트 클라우드와 2D 이미지 라벨을 조합하여 정밀한 3D Occupancy Voxel Ground Truth를 자동 생성하는 파이프라인을 기술합니다.
+   * 가공 포인트:
+     * Voxel Densification: 정적/동적 객체를 분리해 Multi-sweep 포인트 집계 및 KNN 기반 라벨 전파
+     * Occlusion Reasoning: Ray casting을 통한 가시성(Free/Occupied/Unknown) 연산
+     * Image-Guided Refinement: 2D 픽셀 세그멘테이션을 3D 경계에 투영하여 라벨 경계 정밀화
+데이터셋 논문의 "Data Processing" 파트 작성 체크리스트
+nuScenes 스타일의 데이터셋 논문을 작성할 때는 아래 4가지 단계를 섹션별로 나누어 작성하면 논문의 완성도가 높아집니다.
+ * 센서 동기화 및 Ego-Motion 보정 (Sensor Synchronization & Motion Compensation)
+   * 각 센서의 Hz 차이를 맞추는 시간 동기화(Hardware Triggering / PTP / ROS Time Offset)
+   * 차량 이동 중 LiDAR 획원 스캔 시 발생하는 모션 왜곡(Deskewing) 보정 과정
+ * 데이터 필터링 및 샘플링 (Curation & Frame Selection)
+   * 전체 수집 데이터 중 유의미한 Keyframe 선별 기준 (동적 객체 밀도, 날씨/시간대 다양성, 주행 시나리오)
+ * 오토 라벨링 및 휴먼 인 더 루프 (Auto-Labeling & Human QC)
+   * 초안 3D Box/Seg 생성에 사용된 사전 학습 모델 또는 Offboard 알고리즘
+   * 작업자(Annotator)의 검수 및 수정 가이드라인과 3D Bounding Box 허용 오차 범위
+ * 개인정보 및 메타데이터 처리 (Anonymization & Calibration Metadata)
+   * 번호판/얼굴 자동 블러링 전처리
+   * Extrinsic/Intrinsic 캘리브레이션 메타데이터 저장 형식 (nuScenes ego_pose, calibrated_sensor 구조 등)
