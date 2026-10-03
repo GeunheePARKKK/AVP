@@ -10,15 +10,15 @@
 
 classes:
   # --- 차량 ---
-  car:          {size: [4.5, 1.8, 1.5], max_label_range_m: 40}
-  truck:        {size: [5.5, 2.0, 2.2], max_label_range_m: 40}   # 1톤 화물
-  van:          {size: [5.0, 1.9, 2.0], max_label_range_m: 40}   # 승합
-  bus:          {size: [11.0, 2.5, 3.2], max_label_range_m: 40}
-  motorcycle:   {size: [2.1, 0.8, 1.4], max_label_range_m: 25}
-  bicycle:      {size: [1.8, 0.6, 1.2], max_label_range_m: 25}
+  car:          {size: [4.5, 1.8, 1.5], max_label_range_m: 20}
+  truck:        {size: [5.5, 2.0, 2.2], max_label_range_m: 20}   # 1톤 화물
+  van:          {size: [5.0, 1.9, 2.0], max_label_range_m: 20}   # 승합
+  bus:          {size: [11.0, 2.5, 3.2], max_label_range_m: 20}
+  motorcycle:   {size: [2.1, 0.8, 1.4], max_label_range_m: 20}
+  bicycle:      {size: [1.8, 0.6, 1.2], max_label_range_m: 20}
 
   # --- 사람 ---
-  pedestrian:   {size: [0.7, 0.7, 1.7], max_label_range_m: 25}
+  pedestrian:   {size: [0.7, 0.7, 1.7], max_label_range_m: 20}
   # 2026-10-03 기준 8 세션 표본에서 0 명. 선언만 해 둔다 - 표본 밖 프레임에
   # 나타날 수 있고, 그때 작업자가 건너뛰지 않게 하려는 것이다.
 
@@ -52,10 +52,15 @@ evaluation:
     bollard: [0.25, 0.5, 1.0, 2.0]   # 객체가 0.1 m 라 4 m 임계값은 의미가 없다
 
   max_range_m:
-    default: 30
+    default: 20
     bollard: 10
-  # 30 m 를 넘으면 차에 세로 1~2 링만 걸려 방향·높이를 신뢰할 수 없다.
-  # 라벨은 40 m 까지 남기되 평가에서 제외한다.
+  # 처음에는 라벨 40 m / 평가 30 m 로 잡았으나 실제 데이터를 보고 20 m 로 줄였다.
+  # 30 m 에서 차 한 대에 점이 25 개뿐이라 세로로 1~2 링만 걸리고, 그러면 방향(yaw)과
+  # 높이를 라이다로 정할 수 없다. 20 m 면 55 개로 쓸 만하다.
+  #
+  # 라벨 범위와 평가 범위를 같게 둔 이유: 정한 범위 안을 빠뜨리면 모델이 그 객체를
+  # 맞게 찾아도 정답에 없어 오탐으로 집계된다. 범위를 좁히는 것은 괜찮지만
+  # **그 안은 빠짐없이** 라벨링해야 한다.
 
   min_gt_points: 1          # 점이 0 개인 GT 는 평가에서 제외
   flag_sparse_below: 5      # 5 점 미만은 따로 표시해 난이도 분석에 쓴다
