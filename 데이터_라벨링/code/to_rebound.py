@@ -181,7 +181,12 @@ def main():
                                          float(np.sin(yaw / 2))],
                             "annotation": bx["class"],
                             "confidence": int(round(bx["score"] * 100)),
-                            "id": f"{i:03d}_{n:03d}", "internal_pts": 0, "data": {}})
+                            # refine_boxes.py 를 거쳤으면 트랙 ID 가 들어 있다.
+                            # 프레임이 바뀌어도 같은 객체는 같은 ID 를 갖는다.
+                            "id": bx.get("track_id", f"{i:03d}_{n:03d}"),
+                            "internal_pts": bx.get("points", 0),
+                            "data": {k: v for k, v in bx.items()
+                                     if k in ("views", "track_id")}})
             json.dump({"boxes": out}, open(os.path.join(bd, "boxes.json"), "w"),
                       indent=1)
             json.dump({}, open(os.path.join(bd, "description.json"), "w"))
