@@ -1,155 +1,97 @@
 # Lidar_Camera_Calibration
 
-Velodyne VLP-16 LiDAR 데이터 기록 및 카메라-라이다 외부 파라미터 캘리브레이션 작업 저장소입니다.
+카메라 4대 + Velodyne VLP-16 으로 자율주행 데이터셋을 만드는 작업 저장소.
+수집 → 캘리브레이션 → 시간동기화 → 포인트 보정 → 3D bounding box 라벨링까지의 전 과정을 담는다.
 
-이 저장소에는 VLP-16에서 수집한 **원본 UDP 패킷 단위 rosbag 기록**이 포함되어 있습니다.
-
----
-
-## 이게 뭔가요?
-
-Velodyne VLP-16 3D LiDAR가 회전하며 초당 약 10회 주변을 스캔합니다. 이 저장소의 bag 파일은 그 스캔 데이터를 **센서가 내보낸 원본 그대로** 15초간 담아둔 것입니다.
-
-재생하면 녹화 당시의 3D 공간이 시간 순서대로 그대로 복원됩니다.
+**이 문서는 진행 상태를 추적한다. 단계를 끝낼 때마다 완료 시각을 적고 푸시한다.**
 
 ---
 
-## 왜 포인트클라우드가 아니라 패킷을 저장했나
+## 전체 순서
 
-VLP-16 데이터는 두 가지 형태로 저장할 수 있습니다.
-
-| 토픽 | 내용 | 크기 | 시간당 |
+| | 단계 | 상태 | 완료 |
 |---|---|---|---|
-| `/velodyne_packets` | 센서 원본 UDP 패킷 | 92.45 KB/msg | **3.3 GB** |
-| `/velodyne_points` | 변환된 3D 포인트클라우드 | 0.64 MB/msg | 22.9 GB |
+| 1 | 센서 구성 · 녹화 | ✅ | 2026-10-02 17:01 |
+| 2 | 캘리브레이션 (intrinsics + extrinsics) | ⚠️ | 2026-09-28 05:51 |
+| 3 | 시간 동기화 (MCU) | ✅ | 2026-09-15 |
+| 4 | 포인트 보정 (deskew + 셔터 시각) | ✅ | 2026-10-03 00:28 |
+| 5 | 이미지 변환 (밝기 보정) | ✅ | 2026-10-03 01:23 |
+| 6 | 클래스 체계 · 메트릭 정의 | ⬜ **다음** | |
+| 7 | intrinsics ↔ 카메라 시리얼 확정 | ⬜ | |
+| 8 | KISS-ICP 드리프트 측정 | ⬜ | |
+| 9 | 키프레임 선별 (2 Hz, 250 → 50) | ⬜ | |
+| 10 | 포맷 변환 + nuScenes 메타데이터 | ⬜ | |
+| 11 | 라벨링 툴 설치 + 적재 확인 | ⬜ | |
+| 12 | **3D bounding box 라벨링** | ⬜ | |
+| 13 | 품질 검사 | ⬜ | |
+| 14 | 나머지 7개 세션에 4~13 반복 | ⬜ | |
+| 15 | 번호판 · 얼굴 블러링 | ⬜ | |
+| 16 | train/val 분할 + 문서화 | ⬜ | |
 
-`/velodyne_packets`를 선택한 이유는 두 가지입니다.
-
-**1. 용량이 7배 작으면서 무손실입니다.**
-패킷을 재생해서 `velodyne_transform_node`에 통과시키면 포인트클라우드가 100% 동일하게 복원됩니다. 정보 손실이 전혀 없습니다.
-
-**2. 캘리브레이션을 나중에 바꿀 수 있습니다.**
-포인트클라우드로 저장하면 거리·각도 보정값이 이미 좌표에 반영되어 굳어버립니다. 패킷으로 저장하면 보정 파라미터(`VLP16db.yaml`)를 수정한 뒤 다시 변환할 수 있습니다. 캘리브레이션 작업에서는 이 점이 결정적입니다.
+9~13 을 전체에 적용하기 전에 **5 프레임으로 먼저 한 바퀴 돌린다**. 포맷이나 좌표계가 틀렸을 때 50 프레임을 다시 하지 않기 위해서다 ([Creating Impactful AD Datasets](https://arxiv.org/abs/2607.00710) 의 Early Prototype Slice).
 
 ---
 
-## 기록된 데이터
+## 현재 상태
 
-```
-velodyne_packets_15s/
-├── metadata.yaml
-└── velodyne_packets_15s_0.db3
-```
+### 끝난 것
+
+**1. 녹화** — 쓸 수 있는 세션 8 개, free-run (하드웨어 동기 없음)
+
+| 장소 | 세션 | 길이 |
+|---|---|---|
+| 경북대학교 글로벌플라자 주차장 (지하 B1) | 025 · 026 · 028 | 25 초 × 3 |
+| 대구공항 주차장 (실내) | 030 · 031 · 032 | 20 초 × 3 |
+| 대구공항 주차장 | 033 / 034 | 60 초 / 120 초 |
+
+**2. 캘리브레이션** — `calib_result/extrinsics_all.yaml`, 점-평면 RMS 8.4 ~ 17.1 mm (VLP-16 자체 평면잡음 7.9 mm). 이 노트북에서 다른 사람이 수행.
+⚠️ intrinsics 와 카메라 시리얼의 대응이 미확정이다 (7 단계).
+
+**3. 시간 동기화** — ESP32 로 카메라 셔터와 라이다 방위각을 묶어 **시간 오차 표준편차 94 µs**. [`시간동기화`](시간동기화) 참고. 다만 8 개 세션은 전부 free-run 으로 찍었다.
+
+**4. 포인트 보정** — session_025 에 1 ~ 5 단계 적용 ([`포인트보정`](포인트보정))
 
 | 항목 | 값 |
 |---|---|
-| 기록 시각 | 2026-09-04 18:50:13 ~ 18:50:28 (KST) |
-| 지속 시간 | 14.93 초 |
-| 메시지 수 | 149 |
-| 실측 주기 | 9.98 Hz |
-| 파일 크기 | 13.4 MiB |
-| 토픽 | `/velodyne_packets` |
-| 메시지 타입 | `velodyne_msgs/msg/VelodyneScan` |
-| 저장 포맷 | sqlite3 (rosbag2, CDR 직렬화) |
+| 주행 | 평균 4.1 km/h, yaw 1°/s |
+| deskew 효과 (지도 정합 오차) | 직선 6.5 → **3.6 cm**, 회전 5.9 → **3.4 cm** |
+| 구현 검산 (KISS-ICP 내부 보정 대조) | 최대 **0.02 mm** |
+| 카메라 셔터 실측 위상 | CAM1 0 / CAM2 +24.0 / CAM3 +50.0 / CAM4 −27.1 ms (±0.5) |
+| 셔터 보정량 | 정지 중 **0.04 cm**, 주행 중 **3.9 cm** |
 
-### 센서 설정
+산출물: 보정 클라우드 1,001 장 (409 MB, `(N,4)` = x,y,z,intensity)
 
-| 항목 | 값 |
+**5. 이미지 변환** — 감마 0.35 + CLAHE + 노이즈 제거, JPEG 1,001 장 (1.5 GB).
+실내라 raw 평균 밝기가 **4.7/255** 였다. 다음 녹화부터 `--exposure 30000 --gain 16` 을 쓸 것.
+
+### 다음 (6 단계)
+
+라벨링을 시작하기 전에 정해야 한다. 시작 후에는 바꾸면 전부 다시 해야 한다.
+
+- 클래스 체계 (주차장이면 `car`, `pedestrian` 둘로도 가능)
+- 최대 라벨링 거리 (16 빔이라 40 m 를 넘으면 점이 거의 없다)
+- 최소 점 개수 기준 (nuScenes 는 1 점 이상이면 라벨링)
+- train/val 분할 기준 — 시간이 아니라 **지리적 거리**로 나눠야 누수가 없다. 장소가 둘뿐이라 설계가 필요하다
+
+---
+
+## 폴더
+
+| 폴더 | 내용 |
 |---|---|
-| 모델 | Velodyne VLP-16 (Puck) |
-| 회전 속도 | 600 RPM (10 Hz) |
-| 채널 | 16 |
-| IP / 포트 | 192.168.1.201 / UDP 2368 |
-| `frame_id` | `velodyne` |
-| 스캔당 패킷 | 76 |
+| [`시간동기화`](시간동기화) | MCU 하드웨어 동기 (94 µs), 배선·펌웨어·검산 |
+| [`포인트보정`](포인트보정) | KISS-ICP deskew, 셔터 시각 보정, 투영 검증 |
+| [`데이터_라벨링`](데이터_라벨링) | 라벨링 단계와 참고 논문 |
+| `calib_result` | 카메라 4대 ↔ VLP-16 외부 파라미터 |
+
+원본 데이터는 연구실 노트북 `~/ros2_ws/cam_lidar_recording/sessions/` 에 있다 (약 29 GB). 저장소에는 `session_013` 의 pcap 만 들어 있다.
 
 ---
 
-## 재생 방법
+## 참고 논문
 
-### 1. 준비
-
-ROS 2 Humble과 [`ros-drivers/velodyne`](https://github.com/ros-drivers/velodyne) 패키지가 필요합니다.
-
-```bash
-mkdir -p ~/velodyne_ws && cd ~/velodyne_ws
-git clone https://github.com/ros-drivers/velodyne.git
-colcon build --symlink-install
-source install/setup.bash
-```
-
-### 2. 변환 노드 실행
-
-패킷을 포인트클라우드로 바꿔주는 노드를 먼저 띄웁니다. **실제 라이다 하드웨어는 필요 없습니다.**
-
-```bash
-ros2 launch velodyne_pointcloud velodyne_transform_node-VLP16-launch.py
-```
-
-### 3. bag 재생
-
-새 터미널에서:
-
-```bash
-ros2 bag play velodyne_packets_15s
-```
-
-반복 재생하려면 `--loop`, 느리게 보려면 `--rate 0.5`를 붙입니다.
-
-### 4. 시각화
-
-또 다른 터미널에서:
-
-```bash
-rviz2
-```
-
-RViz에서 아래 두 가지만 설정하면 포인트클라우드가 보입니다.
-
-- **Fixed Frame** → `velodyne`
-- **Add** → **PointCloud2** → Topic을 `/velodyne_points`로 지정
-
-> `/velodyne_points`는 Best Effort QoS로 발행됩니다. RViz의 Reliability Policy도 **Best Effort**로 맞춰야 데이터가 표시됩니다.
-
----
-
-## 데이터 구조
-
-재생 후 나오는 `/velodyne_points`의 포인트 하나는 22바이트이며, 스캔당 29,184개(1824 × 16채널)입니다.
-
-| 필드 | 타입 | 크기 | 설명 |
-|---|---|---|---|
-| `x`, `y`, `z` | float32 | 12 B | 센서 기준 3D 좌표 (미터) |
-| `intensity` | float32 | 4 B | 반사 강도 |
-| `ring` | uint16 | 2 B | 레이저 채널 번호 (0~15) |
-| `time` | float32 | 4 B | 스캔 시작 시점 대비 상대 시각 (초) |
-
-`ring`과 `time` 필드 덕분에 포인트 단위 시계열 복원이 가능합니다. 메시지 헤더의 절대 타임스탬프에 포인트별 `time` 오프셋을 더하면 각 점이 정확히 언제 측정되었는지 알 수 있습니다. 회전형 LiDAR는 한 스캔 안에서도 점마다 측정 시각이 다르기 때문에, 움직이는 플랫폼에서는 이 값이 모션 보정(deskewing)에 필수입니다.
-
----
-
-## 다른 형식으로 내보내기
-
-포인트클라우드를 CSV나 PCD로 뽑고 싶다면 bag을 재생하면서 저장하면 됩니다.
-
-```bash
-# PCD 파일로 (스캔당 1개 파일)
-ros2 run pcl_ros pointcloud_to_pcd --ros-args -r input:=/velodyne_points
-```
-
-pandas 분석용 테이블이 필요하면 `sensor_msgs_py.point_cloud2.read_points()`로 numpy 배열을 얻어 Parquet으로 저장하는 방식을 권장합니다. CSV는 같은 데이터가 5배 이상 커집니다.
-
----
-
-## 수집 환경
-
-| 항목 | 내용 |
+| 논문 | 우리가 따르는 부분 |
 |---|---|
-| OS | Ubuntu 22.04 (Linux 6.8.0-138-generic) |
-| ROS | ROS 2 Humble |
-| 드라이버 | [ros-drivers/velodyne](https://github.com/ros-drivers/velodyne) |
-| 호스트 | ASUS TUF Gaming A14 (FA401UM) |
-| 네트워크 | Belkin Thunderbolt 5 Dock 내장 2.5GbE (RTL8156b), 40 Gb/s USB4 링크 |
-| 호스트 IP | 192.168.1.100/24 |
-
-수집 중 패킷 유실은 없었습니다 (NIC RX errors 0 / dropped 0 / missed 0).
+| [nuScenes (CVPR 2020)](https://arxiv.org/abs/1903.11027) · [라벨러 지침](https://github.com/nutonomy/nuscenes-devkit/blob/master/docs/instructions_nuscenes.md) | 2 Hz 키프레임, 박스 지침(1 점 이상·타이트하게), 가시성 4 단계, 속성, 번호판 블러 |
+| [Waymo Offboard 3D (CVPR 2021)](https://arxiv.org/abs/2103.05073) | 정적/동적 분리, 정적 객체 멀티스윕 병합 (전체 파이프라인은 검출기·추적기가 필요해 사용 불가) |
+| [Creating Impactful AD Datasets (2026)](https://arxiv.org/abs/2607.00710) | Early Prototype Slice, 지리적 분할, 평가용 데이터셋은 동기화 품질이 핵심 |
