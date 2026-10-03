@@ -72,6 +72,10 @@ def main():
     ap.add_argument("--min-points", type=int, default=5,
                     help="박스 안 점이 이보다 적으면 그 프레임에서는 빼놓는다")
     ap.add_argument("--no-refit", action="store_true", help="점에 맞춰 다시 재는 단계 생략")
+    ap.add_argument("--no-keep-raw", action="store_true",
+                    help="원본 검출 기하를 쓰지 않고 월드 평균 박스를 쓴다 (권장하지 않음)")
+    ap.add_argument("--no-snap", action="store_true",
+                    help="프레임마다 위치를 그 프레임 점에 맞추는 단계 생략")
     ap.add_argument("--no-shape-check", action="store_true",
                     help="차 모양인지 검사하는 단계 생략")
     ap.add_argument("--max-vertical", type=float, default=1.0,
@@ -93,6 +97,7 @@ def main():
     poses = load_poses(args.poses)
     det = json.load(open(args.detections))
     frames = det["frames"]
+    kf_scan = {f["keyframe"]: f["scan"] for f in frames}
 
     # ---------- 1. 월드 좌표로 모은다 ----------
     obs = []
@@ -106,7 +111,9 @@ def main():
             c = np.array(b["center"]) @ T[:3, :3].T + T[:3, 3]
             obs.append(dict(kf=f["keyframe"], scan=f["scan"], center=c,
                             size=np.array(b["size"]), yaw=b["yaw"] + yaw_of(T[:3, :3]),
-                            score=b["score"], cls=b["class"]))
+                            score=b["score"], cls=b["class"],
+                            raw=dict(center=list(b["center"]), size=list(b["size"]),
+                                     yaw=float(b["yaw"]))))
     print(f"검출 {len(obs)} 개를 월드 좌표로 모았다")
 
     # ---------- 2. 묶는다 ----------
@@ -166,8 +173,13 @@ def main():
         yaw = mean_yaw_mod180([obs[i]["yaw"] for i in g])
         cls = max(set(obs[i]["cls"] for i in g),
                   key=lambda c: sum(obs[i]["score"] for i in g if obs[i]["cls"] == c))
+        raw_by_kf = {}
+        for i in g:                                     # 한 프레임에 둘이면 점수 높은 쪽
+            k = obs[i]["kf"]
+            if k not in raw_by_kf or obs[i]["score"] > raw_by_kf[k][1]:
+                raw_by_kf[k] = (obs[i]["raw"], obs[i]["score"])
         tracks.append(dict(id=f"T{n:03d}", center=center, size=size, yaw=yaw,
-                           cls=cls, views=views,
+                           cls=cls, views=views, raw_by_kf=raw_by_kf,
                            score=float(np.mean([obs[i]["score"] for i in g])),
                            kfs=sorted(set(obs[i]["kf"] for i in g))))
 
@@ -190,10 +202,14 @@ def main():
             ca, sa = np.cos(-t["yaw"]), np.sin(-t["yaw"])
             loc = np.stack([d2[:, 0] * ca - d2[:, 1] * sa,
                             d2[:, 0] * sa + d2[:, 1] * ca], axis=1)
+            # center[2] 는 **바닥중심**이다 (mmdet3d 관례, to_rebound.py:176 참고).
+            # 예전에는 중심으로 착각해 z 를 -h/2 부터 잡아서 **지면 점**이 섞여
+            # 들어왔다. 지면이 섞이면 minAreaRect 가 차 아래 바닥까지 감싸면서
+            # 사각형이 커지고 중심이 밀린다.
             near = P[(np.abs(loc[:, 0]) < l / 2 + 0.3)
                      & (np.abs(loc[:, 1]) < wd / 2 + 0.3)
-                     & (P[:, 2] > t["center"][2] - h / 2 + 0.25)
-                     & (P[:, 2] < t["center"][2] + h / 2)]
+                     & (P[:, 2] > t["center"][2] + 0.3)
+                     & (P[:, 2] < t["center"][2] + h)]
             if len(near) < 80:
                 continue
             rect = cv2.minAreaRect(near[:, :2].astype(np.float32))
@@ -205,23 +221,30 @@ def main():
             if not (2.0 <= L <= 7.0):
                 continue
 
-            # 주차된 차는 한쪽 면만 보이는 경우가 많다. 그때 minAreaRect 는 폭이
-            # 얇게(0.3~1.0 m) 나온다. 보이는 면은 그대로 두고 **안 보이는 쪽으로**
-            # 차 폭만큼 늘린다. 길이도 같은 이유로 너무 짧으면 늘린다.
+            # 주차된 차는 한쪽 면만 보여서 minAreaRect 의 폭이 얇게 나온다.
+            # 보이는 면을 그대로 두고 **센서 반대쪽**으로 늘린다.
+            #
+            # 센서 위치를 월드 원점으로 착각해 늘리는 방향을 틀리게 잡은 적이 있다.
+            # 센서는 매 스캔 움직이므로, 이 트랙을 관측한 프레임들의 **센서 위치
+            # 평균**을 기준으로 삼는다.
             ca, sa = np.cos(new_yaw), np.sin(new_yaw)
-            axis_l = np.array([ca, sa])        # 길이 방향
-            axis_w = np.array([-sa, ca])       # 폭 방향
+            axis_l = np.array([ca, sa])
+            axis_w = np.array([-sa, ca])
             c2 = np.array([cx, cy])
+            sensor = np.mean([poses[kf_scan[k]][:3, 3][:2] for k in t["kfs"] if k in kf_scan], axis=0)
+            to_sensor = sensor - c2
             if W < 1.6:
                 grow = 1.8 - W
-                # 센서(원점 근처)에서 먼 쪽으로 늘린다
-                side = np.sign(np.dot(c2 - t["center"][:2] * 0, axis_w)) or 1.0
-                away = -np.sign(np.dot(-c2, axis_w)) or 1.0
+                away = -np.sign(np.dot(to_sensor, axis_w))     # 센서 반대쪽
+                if away == 0:
+                    away = 1.0
                 c2 = c2 + axis_w * (away * grow / 2)
                 W = 1.8
             if L < 3.6:
                 grow = 4.3 - L
-                away = -np.sign(np.dot(-c2, axis_l)) or 1.0
+                away = -np.sign(np.dot(to_sensor, axis_l))
+                if away == 0:
+                    away = 1.0
                 c2 = c2 + axis_l * (away * grow / 2)
                 L = 4.3
             if not (3.0 <= L <= 7.0 and 1.4 <= W <= 2.6):
@@ -305,6 +328,8 @@ def main():
            "params": vars(args), "n_tracks": len(tracks), "frames": []}
     filled = 0
     total = 0
+    snapped = 0
+    kept_raw = 0
     for f in frames:
         k = f["scan"]
         Tin = np.linalg.inv(poses[k])
@@ -312,25 +337,77 @@ def main():
         pts_local = ds._xyz[a:b]
         boxes = []
         for t in tracks:
-            c = t["center"] @ Tin[:3, :3].T + Tin[:3, 3]
+            # ── 기하는 원본 검출에서 가져온다 ───────────────────────────
+            # 월드 평균은 ego pose(오도메트리) 오차를 박스에 섞어 넣는다. 원본
+            # 검출은 그 프레임의 점으로 그 프레임 좌표에서 계산된 것이라 그런
+            # 오차가 없다. 다듬기는 **무엇이 진짜 물체인지 고르고 트랙을 잇는
+            # 데만** 쓰고, 박스 기하는 원본을 그대로 쓴다. 원본이 없는
+            # 프레임만 평균 박스를 전파해 채운다.
+            raw = t["raw_by_kf"].get(f["keyframe"])
+            if raw and not args.no_keep_raw:
+                r = raw[0]
+                c = np.array(r["center"], float)
+                l, wd, h = (float(x) for x in r["size"])
+                yaw = float(r["yaw"])
+                src = "원본"
+            else:
+                c = t["center"] @ Tin[:3, :3].T + Tin[:3, 3]
+                yaw = t["yaw"] + yaw_of(Tin[:3, :3])
+                l, wd, h = (float(x) for x in t["size"])
+                src = "전파"
             if np.hypot(c[0], c[1]) >= args.max_range:
                 continue
-            yaw = t["yaw"] + yaw_of(Tin[:3, :3])
-            l, wd, h = t["size"]
+
+            def local_xy(center, ang):
+                ca_, sa_ = np.cos(-ang), np.sin(-ang)
+                d_ = pts_local[:, :2] - center[:2]
+                return np.stack([d_[:, 0] * ca_ - d_[:, 1] * sa_,
+                                 d_[:, 0] * sa_ + d_[:, 1] * ca_], axis=1)
+
+            if src == "전파" and not args.no_snap:
+                # 전파한 박스만, 그 프레임 점에 위치를 맞춘다.
+                # 원본 박스는 이미 그 프레임 점으로 만든 것이라 손대지 않는다.
+                loc = local_xy(c, yaw)
+                sel = ((np.abs(loc[:, 0]) < l / 2 + 0.5)
+                       & (np.abs(loc[:, 1]) < wd / 2 + 0.5)
+                       & (pts_local[:, 2] > c[2] + 0.3)
+                       & (pts_local[:, 2] < c[2] + h))
+                if sel.sum() >= 20:
+                    lp = loc[sel]
+                    axis = ((np.cos(yaw), np.sin(yaw)), (-np.sin(yaw), np.cos(yaw)))
+                    d = []
+                    for ax in (0, 1):
+                        dim = l if ax == 0 else wd
+                        lo2, hi2 = np.percentile(lp[:, ax], (2, 98))
+                        if hi2 - lo2 > 0.8 * dim:
+                            d.append((lo2 + hi2) / 2)     # 양끝이 다 보인다
+                        else:
+                            sgn = np.sign(np.dot(-c[:2], axis[ax])) or 1.0
+                            d.append((hi2 if sgn > 0 else lo2) - sgn * dim / 2)
+                    dl = float(np.clip(d[0], -0.6, 0.6))
+                    dw = float(np.clip(d[1], -0.6, 0.6))
+                    ca2, sa2 = np.cos(yaw), np.sin(yaw)
+                    c = c.copy()
+                    c[0] += dl * ca2 - dw * sa2
+                    c[1] += dl * sa2 + dw * ca2
+                    snapped += 1
+
             # 그 프레임에서 실제로 점이 보이는지
-            R2 = np.array([[np.cos(-yaw), -np.sin(-yaw)], [np.sin(-yaw), np.cos(-yaw)]])
-            loc = (pts_local[:, :2] - c[:2]) @ R2.T
+            loc = local_xy(c, yaw)
             n_in = int(((np.abs(loc[:, 0]) < l / 2) & (np.abs(loc[:, 1]) < wd / 2)
                         & (pts_local[:, 2] > c[2]) & (pts_local[:, 2] < c[2] + h)).sum())
             if n_in < args.min_points:
                 continue
-            if f["keyframe"] not in t["kfs"]:
+            if src == "원본":
+                kept_raw += 1
+            else:
                 filled += 1
+
             boxes.append({"class": t["cls"], "score": round(t["score"], 3),
                           "center": [float(x) for x in c],
-                          "size": [float(x) for x in t["size"]],
+                          "size": [l, wd, h],
                           "yaw": float(yaw), "track_id": t["id"],
-                          "views": t["views"], "points": n_in})
+                          "views": t["views"], "points": n_in, "source": src})
         total += len(boxes)
         out["frames"].append({"keyframe": f["keyframe"], "scan": k, "boxes": boxes})
 
@@ -339,6 +416,7 @@ def main():
     before = len(obs)
     print(f"\n박스 {before} → {total} 개 (프레임당 {before/len(frames):.1f} → {total/len(frames):.1f})")
     print(f"  트랙 {len(tracks)} 개, 검출이 빠졌던 자리를 채운 것 {filled} 개")
+    print(f"  원본 기하 {kept_raw} 개 · 전파로 채운 것 {filled} 개 (점에 맞춘 것 {snapped} 개)")
     print(f"저장: {args.out}")
 
 

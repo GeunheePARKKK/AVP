@@ -1,0 +1,21 @@
+# 수집 원본 데이터 (자세당 PNG 8MB + 라이다 npy 5MB, 카메라당 ~180MB)
+# 결과는 calib_result/ 에 있고, 재수집 방법은 calib_result/SUMMARY.md 참고
+calib_data/
+
+# 카메라+라이다 동시 녹화 (record_session.py 출력)
+recording_10s/
+recording_*/
+
+# 내부 파라미터 검증용 임시 촬영
+verify_shots/
+verify_captures/
+
+__pycache__/
+*.pyc
+
+# 오버레이 검증 이미지 전체(92장, 83MB)는 로컬 보관.
+# 대표 샘플은 calib_result/overlay_samples/ 에 축소본으로 커밋됨.
+calib_result/*_overlay/
+
+# 캘리브레이션 원본 압축본 (830MB, 로컬 보관)
+calib_.zip
