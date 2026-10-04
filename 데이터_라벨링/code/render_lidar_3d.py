@@ -95,6 +95,13 @@ def main():
     ap.add_argument("--eye", default="-13,0,11", help="가상 카메라 위치 (ego 좌표)")
     ap.add_argument("--target", default="7,0,-1")
     ap.add_argument("--point-size", type=int, default=2)
+    ap.add_argument("--color", choices=("range", "height"), default="range",
+                    help="점 색 기준. height 는 지면 기준 높이 — 차가 도드라진다")
+    ap.add_argument("--drop-ground", type=float, default=None,
+                    help="지면 위 이 높이(m) 아래 점을 뺀다. 0.25 쯤이면 바닥이 걷힌다")
+    ap.add_argument("--max-height", type=float, default=None,
+                    help="지면 위 이 높이(m) 위 점을 뺀다. 실내는 천장이 모든 것 위에 "
+                         "있어서, 2.2 쯤으로 잘라야 차가 보인다")
     ap.add_argument("--frame", type=int, default=None,
                     help="이 키프레임 한 장만 그려 이미지로 저장")
     ap.add_argument("--spin", action="store_true",
@@ -113,6 +120,13 @@ def main():
     kf_scan = np.array([f["scan"] for f in det["frames"]])
     W, H = args.width, args.height
 
+    # 지면 높이는 한 번만 구한다 (ego 좌표 z 의 최빈값)
+    a0, b0 = ds._spans[min(20, len(ds._spans) - 1)]
+    z0 = ds._xyz[a0:b0][:, 2]
+    hist, edges = np.histogram(z0[z0 < np.median(z0)], bins=80)
+    ground_z = float(edges[int(np.argmax(hist))])
+    print(f"지면 높이(ego 좌표) {ground_z:+.2f} m")
+
     def sweep(k):
         """스캔 k 기준으로 앞 몇 장을 ego 보정해 누적한다."""
         acc = []
@@ -125,21 +139,35 @@ def main():
     def draw(k, view):
         img = np.zeros((H, W, 3), np.uint8)
         P = sweep(k)
+        keep = np.linalg.norm(P[:, :2], axis=1) < args.max_range
+        if args.drop_ground is not None:
+            keep &= P[:, 2] > ground_z + args.drop_ground
+        if args.max_height is not None:
+            keep &= P[:, 2] < ground_z + args.max_height
+        P = P[keep]
         rng = np.linalg.norm(P[:, :2], axis=1)
-        P = P[rng < args.max_range]
-        rng = rng[rng < args.max_range]
         uv, z = view.project(P)
         m = (z > NEAR) & (uv[:, 0] >= 0) & (uv[:, 0] < W) & (uv[:, 1] >= 0) & (uv[:, 1] < H)
-        uv, z, rng = uv[m].astype(int), z[m], rng[m]
+        if args.color == "height":
+            key = np.clip((P[m][:, 2] - ground_z) / (args.max_height or 2.2), 0, 1) * 255
+        else:
+            key = np.clip(rng[m] / args.max_range * 255, 0, 255)
+        uv, z = uv[m].astype(int), z[m]
         order = np.argsort(-z)                      # 먼 점부터 (화가 알고리즘)
-        uv, rng = uv[order], rng[order]
-        col = cv2.applyColorMap(
-            np.clip(rng / args.max_range * 255, 0, 255).astype(np.uint8).reshape(-1, 1),
-            cv2.COLORMAP_JET).reshape(-1, 3)
+        uv, key = uv[order], key[order]
+        col = cv2.applyColorMap(key.astype(np.uint8).reshape(-1, 1),
+                                cv2.COLORMAP_JET).reshape(-1, 3)
+        # 점 찍기는 벡터화한다. 80 만 점을 파이썬 반복문으로 찍으면 한 프레임에
+        # 수십 초가 걸린다. 먼 점부터 정렬돼 있으므로 뒤에 쓰인 값이 남아
+        # 가까운 점이 위에 덮인다 (화가 알고리즘).
         s = args.point_size
-        for (u, v), c in zip(uv, col):
-            cv2.rectangle(img, (u - s // 2, v - s // 2), (u + s // 2, v + s // 2),
-                          (int(c[0]), int(c[1]), int(c[2])), -1)
+        off = range(-(s // 2), s // 2 + 1) if s > 1 else (0,)
+        for dy in off:
+            for dx in off:
+                u2 = uv[:, 0] + dx
+                v2 = uv[:, 1] + dy
+                ok = (u2 >= 0) & (u2 < W) & (v2 >= 0) & (v2 < H)
+                img[v2[ok], u2[ok]] = col[ok]
 
         j = int(np.argmin(np.abs(kf_scan - k)))
         T_now = np.linalg.inv(poses[k]) @ poses[kf_scan[j]]

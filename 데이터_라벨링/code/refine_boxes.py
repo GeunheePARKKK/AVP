@@ -89,6 +89,9 @@ def main():
     ap.add_argument("--min-roof-area", type=float, default=0.05,
                     help="지붕대(지면+1.15~1.8 m) 점이 박스 바닥면에서 차지하는 비율. "
                          "차는 0.08 이상, 지붕이 없는 구조물은 0.02 이하")
+    ap.add_argument("--max-yaw-dev", type=float, default=30.0,
+                    help="한 트랙 안에서 프레임별 방향이 트랙 합의에서 이만큼(도) 넘게 "
+                         "벗어나면 합의 방향으로 돌린다. 주차된 차는 회전하지 않는다")
     ap.add_argument("--max-roof-std", type=float, default=0.42,
                     help="박스 윗면 높이의 표준편차(m). 차는 지붕이 평평해 0.20~0.35, "
                          "계단·경사로는 0.47 이상. 격자 셀 35 개 이상일 때만 적용")
@@ -422,6 +425,47 @@ def main():
                           "views": t["views"], "points": n_in, "source": src})
         total += len(boxes)
         out["frames"].append({"keyframe": f["keyframe"], "scan": k, "boxes": boxes})
+
+    # ---------- 6.5 트랙 안에서 방향 맞추기 ----------
+    # 박스 기하를 원본 검출에서 가져오므로, 검출기가 한두 프레임에서 방향을
+    # 90 도 틀리면 그대로 나간다. session_031 T016 은 16.1~18.2 초 4 프레임에서
+    # 80 도 돌아갔다 (크기는 그대로, 점은 오히려 그때 가장 많았다).
+    #
+    # **주차된 차는 회전하지 않는다.** 트랙 안에서 방향이 튀면 합의 방향으로
+    # 되돌린다. 합의는 이상치에 끌려가지 않도록 한 번 걸러 다시 구한다.
+    fixed_yaw = 0
+    if args.max_yaw_dev > 0:
+        per = {}
+        for fi, f in enumerate(out["frames"]):
+            yz = yaw_of(poses[f["scan"]][:3, :3])
+            for bi, b in enumerate(f["boxes"]):
+                per.setdefault(b["track_id"], []).append((fi, bi, b["yaw"] + yz))
+        lim = np.radians(args.max_yaw_dev)
+        for tid, v in per.items():
+            if len(v) < 4:
+                continue
+            ys = np.array([x[2] for x in v])
+            cons = mean_yaw_mod180(ys)
+            dev = np.abs(wrap(2 * (ys - cons))) / 2
+            good = dev < np.radians(45)
+            if good.sum() >= 3 and good.sum() < len(ys):
+                cons = mean_yaw_mod180(ys[good])      # 이상치를 빼고 다시
+                dev = np.abs(wrap(2 * (ys - cons))) / 2
+            # 180 도 뒤집힘은 같은 상자지만, 트랙 안에서 앞뒤가 뒤죽박죽이면
+            # 보기에 거슬린다. 멀쩡한 프레임들의 앞 방향에 맞춘다.
+            gy = ys[good] if good.any() else ys
+            full = float(np.arctan2(np.sin(gy).mean(), np.cos(gy).mean()))
+            cons_w = cons if abs(wrap(cons - full)) < np.pi / 2 else cons + np.pi
+            for (fi, bi, y), d in zip(v, dev):
+                if d <= lim:
+                    continue
+                yz = yaw_of(poses[out["frames"][fi]["scan"]][:3, :3])
+                b = out["frames"][fi]["boxes"][bi]
+                b["yaw"] = float(wrap(cons_w - yz))
+                b["yaw_fixed"] = round(float(np.degrees(d)), 1)
+                fixed_yaw += 1
+        if fixed_yaw:
+            print(f"→ 트랙 합의 방향으로 되돌린 박스 {fixed_yaw} 개")
 
     # ---------- 7. 내보낼 박스로 다시 모양 검사 ----------
     # 5.5 단계 검사는 **월드 평균 박스**를 본다. 그런데 실제로 나가는 것은
