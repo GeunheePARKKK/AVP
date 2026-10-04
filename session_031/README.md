@@ -255,6 +255,24 @@ rebound/session_031/
 
 **"Toggle Predicted or GT" 를 Ground Truth 로 두고 작업해야 한다.**
 
+
+### 라이다 화면에서 본 박스
+
+카메라 영상은 **캘리브레이션을 거친 확인용**이다. 박스 자체는 처음부터 라이다 좌표계에 있으므로, 캘리브레이션 없이 포인트클라우드에 그대로 그릴 수 있다. 박스 품질만 보려면 이쪽이 맞다 — 캘리브레이션 오차가 끼어들 여지가 없다.
+
+![라이다 3D](라이다3D_프레임.jpg)
+
+[`라이다3D_20초.mp4`](라이다3D_20초.mp4) (1280×720, 9.1 MB). 원본은 `~/ros2_ws/cam_lidar_recording/sessions/session_031/lidar3d_20s.mp4` (1600×900, 73 MB).
+
+```bash
+PYTHONPATH=<kiss-icp 환경> python3 데이터_라벨링/code/render_lidar_3d.py \
+  ~/ros2_ws/cam_lidar_recording/sessions/session_031 \
+  --poses <deskew_on> --detections <refined.json> \
+  --eye=-24,0,19 --target=4,0,-1 --n-sweep 8 -o lidar3d.mp4
+```
+
+점 색은 **거리**다 (가까울수록 파랑). 16 채널은 한 장이 성겨서 `--n-sweep 8` 로 ego pose 보정해 8 장을 겹쳤다. `--frame N` 으로 한 장만, `--spin` 으로 한 장면을 한 바퀴 돌며 볼 수 있다.
+
 ### 확인용 영상
 
 ![검출 박스](검출박스_프레임.jpg)
