@@ -44,10 +44,17 @@ PYTHONPATH=$SCRATCH/pylibs python3 데이터_라벨링/code/refine_boxes.py "$S"
     --poses "$R/deskew_on" --detections "$R/$SUB/detections.json" \
     -o "$R/$SUB/refined.json"
 
+echo "=== session_$SES : 꼬깔콘 검출 ==="
+PYTHONPATH=$SCRATCH/pylibs python3 데이터_라벨링/code/detect_cones.py "$S" \
+    --poses "$R/deskew_on" --keyframes "$R/keyframes.json" \
+    --vehicles "$R/$SUB/refined.json" --taper 1.05 \
+    -o "$R/$SUB/cones.json"
+
 echo "=== session_$SES : 11 단계 ReBound 변환 ==="
 PYTHONPATH=$SCRATCH/pylibs python3 데이터_라벨링/code/to_rebound.py "$S" \
     --poses "$R/deskew_on" --keyframes "$R/keyframes.json" \
-    --detections "$R/$SUB/refined.json" --n-sweep 30 -o "$RB"
+    --detections "$R/$SUB/refined.json" --extra "$R/$SUB/cones.json" \
+    --n-sweep 30 -o "$RB"
 
 # bounding/ 은 사람이 작업할 사본이다. confidence 를 100 으로 올려 두지 않으면
 # ReBound 기본 임계값에 걸려 화면에 안 보인다.
@@ -70,6 +77,7 @@ PY
 echo "=== session_$SES : 확인용 3D 영상 ==="
 PYTHONPATH=$SCRATCH/pylibs python3 데이터_라벨링/code/render_lidar_3d.py "$S" \
     --poses "$R/deskew_on" --detections "$R/$SUB/refined.json" \
+    --extra "$R/$SUB/cones.json" \
     --eye=-22,0,16 --target=4,0,-0.5 --n-sweep 30 --color height \
     --drop-ground 0.25 --max-height 2.2 -o "$S/lidar3d.mp4"
 

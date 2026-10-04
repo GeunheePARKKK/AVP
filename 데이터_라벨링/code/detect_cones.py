@@ -98,6 +98,12 @@ def main():
     ap.add_argument("--min-views", type=int, default=2)
     ap.add_argument("--row-spacing", default="0.8,2.5",
                     help="꼬깔콘 열의 이웃 간격 범위 (m). 이 안에 짝이 있으면 믿는다")
+    ap.add_argument("--no-fill", action="store_true",
+                    help="빠진 키프레임을 채우지 않는다 (깜빡임을 그대로 둔다)")
+    ap.add_argument("--fill-radius", type=float, default=0.35,
+                    help="전파할 자리에 점이 있는지 볼 반경 (m)")
+    ap.add_argument("--fill-points", type=int, default=5,
+                    help="그 반경 안 점이 이보다 적으면 가려진 것으로 보고 내지 않는다")
     ap.add_argument("--no-row", action="store_true",
                     help="열 구조를 쓰지 않는다 (외톨이 꼬깔콘만 있는 데이터용)")
     args = ap.parse_args()
@@ -121,6 +127,7 @@ def main():
 
     L, W, H = (float(x) for x in args.size.split(","))
     found = []
+    band_cache = {}
     for idx, k in enumerate(scans):
         acc = []
         for j in range(max(0, k - args.n_sweep + 1), k + 1):
@@ -190,6 +197,7 @@ def main():
             boxes.append({"class": "traffic_cone", "score": 0.5,
                           "center": [float(cx), float(cy), float(gnd)],
                           "size": [L, W, H], "yaw": 0.0, "points": len(grp)})
+        band_cache[idx] = (P[:, :3].astype(np.float32), gnd)
         found.append({"keyframe": idx, "scan": k, "boxes": boxes})
         print(f"  {idx+1}/{len(scans)}  스캔 {k}  꼬깔콘 후보 {len(boxes)}")
 
@@ -246,6 +254,8 @@ def main():
     kept = 0
     out = {"source": "detect_bollards.py", "params": vars(args), "frames": []}
     gi = 0
+    per_frame = {}
+    world = {}                                   # 트랙 → 월드 중심
     for f in found:
         bs = []
         for b in f["boxes"]:
@@ -254,14 +264,54 @@ def main():
                 b["track_id"] = tid
                 b["views"] = views
                 b["in_row"] = row
+                b["source"] = "원본"
                 bs.append(b)
+                T = poses[f["scan"]]
+                c = np.array(b["center"]) @ T[:3, :3].T + T[:3, 3]
+                world.setdefault(tid, []).append(c)
             gi += 1
+        per_frame[f["keyframe"]] = bs
+    world = {t: np.mean(v, axis=0) for t, v in world.items()}
+
+    # ---------- 빠진 키프레임 채우기 ----------
+    # 검출된 프레임에만 박스를 내면 꼬깔콘이 깜빡인다. 차량에 쓴 것과 같은
+    # 원리로, 트랙을 **모든 키프레임에 다시 뿌린다.** 거리 안에 들어오고
+    # 그 자리에 점이 실제로 있을 때만 낸다.
+    filled = 0
+    if not args.no_fill:
+        for f in found:
+            kfi = f["keyframe"]
+            have = {b["track_id"] for b in per_frame[kfi]}
+            if kfi not in band_cache:
+                continue
+            Pb, gnd = band_cache[kfi]
+            Tin = np.linalg.inv(poses[f["scan"]])
+            for tid, wc in world.items():
+                if tid in have:
+                    continue
+                c = wc @ Tin[:3, :3].T + Tin[:3, 3]
+                if np.hypot(c[0], c[1]) >= args.max_range:
+                    continue
+                d = np.hypot(Pb[:, 0] - c[0], Pb[:, 1] - c[1])
+                n = int((d < args.fill_radius).sum())
+                if n < args.fill_points:
+                    continue                      # 점이 없으면 가려졌거나 없는 것
+                q = Pb[d < args.fill_radius]
+                per_frame[kfi].append(
+                    {"class": "traffic_cone", "score": 0.4,
+                     "center": [float(q[:, 0].mean()), float(q[:, 1].mean()), float(gnd)],
+                     "size": [L, W, H], "yaw": 0.0, "points": n,
+                     "track_id": tid, "source": "전파"})
+                filled += 1
+
+    for f in found:
+        bs = per_frame[f["keyframe"]]
         kept += len(bs)
         out["frames"].append({"keyframe": f["keyframe"], "scan": f["scan"], "boxes": bs})
     with open(args.out, "w") as fp:
         json.dump(out, fp, indent=1, ensure_ascii=False)
     raw = sum(len(f["boxes"]) for f in found)
-    print(f"\n후보 {raw} 개 → {args.min_views} 회 이상 관측된 {kept} 개")
+    print(f"\n후보 {raw} 개 → 최종 {kept} 개 (원본 {kept - filled} · 전파 {filled})")
     print(f"저장: {args.out}")
 
 
