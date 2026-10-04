@@ -21,7 +21,9 @@ import cv2
 import numpy as np
 
 COLOR = {"car": (80, 255, 80), "truck": (0, 200, 255), "bus": (255, 160, 0),
-         "trailer": (255, 160, 0), "construction_vehicle": (200, 120, 255)}
+         "trailer": (255, 160, 0), "construction_vehicle": (200, 120, 255),
+         "bollard": (255, 80, 255), "traffic_cone": (0, 140, 255),
+         "pedestrian": (255, 255, 80), "cart": (180, 180, 255)}
 EDGES = [(0, 1), (1, 2), (2, 3), (3, 0), (4, 5), (5, 6), (6, 7), (7, 4),
          (0, 4), (1, 5), (2, 6), (3, 7)]
 NEAR = 0.5
@@ -85,6 +87,8 @@ def main():
     ap.add_argument("session")
     ap.add_argument("--poses", required=True)
     ap.add_argument("--detections", required=True)
+    ap.add_argument("--extra", default=None,
+                    help="같은 키프레임 구조의 추가 검출 (예: bollards.json). 합쳐 그린다")
     ap.add_argument("-o", "--out", required=True)
     ap.add_argument("--width", type=int, default=1600)
     ap.add_argument("--height", type=int, default=900)
@@ -117,6 +121,10 @@ def main():
     ds = VLP16PcapDataset(os.path.join(args.session, "lidar.pcap"))
     poses = load_poses(args.poses)
     det = json.load(open(args.detections))
+    if args.extra:
+        ex = {f["keyframe"]: f["boxes"] for f in json.load(open(args.extra))["frames"]}
+        for f in det["frames"]:
+            f["boxes"] = f["boxes"] + ex.get(f["keyframe"], [])
     kf_scan = np.array([f["scan"] for f in det["frames"]])
     W, H = args.width, args.height
 
@@ -181,10 +189,11 @@ def main():
             if (zc < NEAR).all():
                 continue
             c = COLOR.get(b["class"], (255, 255, 255))
+            th = 2 if max(b["size"][0], b["size"][1]) > 1.0 else 3   # 볼라드는 굵게
             for e in EDGES:
                 p0, p1 = pts[e[0]], pts[e[1]]
                 if p0 and p1:
-                    cv2.line(img, p0, p1, c, 2, cv2.LINE_AA)
+                    cv2.line(img, p0, p1, c, th, cv2.LINE_AA)
             # 앞면을 채워 방향을 보이게
             front = [pts[i] for i in (0, 1, 5, 4)]
             if all(front):
