@@ -83,6 +83,12 @@ def main():
                          "수직 구조물(기둥·벽)로 본다. 실측상 차는 0.0~0.5, 기둥은 3 이상")
     ap.add_argument("--min-car-points", type=int, default=50,
                     help="차 높이대(지면+0.3~2.0 m) 점이 이보다 적으면 버린다")
+    ap.add_argument("--max-above", type=float, default=0.7,
+                    help="차 지붕 위(지면+1.95~2.8 m) 점 / 몸통대(0.3~1.8 m) 점. "
+                         "실측상 차는 0.00~0.57, 벽·난간에 걸린 박스는 0.76 이상")
+    ap.add_argument("--min-roof-area", type=float, default=0.05,
+                    help="지붕대(지면+1.15~1.8 m) 점이 박스 바닥면에서 차지하는 비율. "
+                         "차는 0.08 이상, 지붕이 없는 구조물은 0.02 이하")
     ap.add_argument("--continue-ratio", type=float, default=0.6,
                     help="박스 양 끝 너머로 점이 이만큼 이어지면 벽으로 본다")
     args = ap.parse_args()
@@ -411,11 +417,68 @@ def main():
         total += len(boxes)
         out["frames"].append({"keyframe": f["keyframe"], "scan": k, "boxes": boxes})
 
+    # ---------- 7. 내보낼 박스로 다시 모양 검사 ----------
+    # 5.5 단계 검사는 **월드 평균 박스**를 본다. 그런데 실제로 나가는 것은
+    # 6 단계에서 원본 검출 기하로 바뀐 박스다. 둘이 다르면 검사를 통과한
+    # 박스가 엉뚱한 곳에 놓인 채 나간다 — session_031 에서 벽·난간에 걸친
+    # 박스 3 개가 이렇게 빠져나갔다. 그래서 **내보낼 박스 자체**를 다시 잰다.
+    if not args.no_shape_check:
+        wp2 = []
+        for f in frames:
+            a, b = ds._spans[f["scan"]]
+            T = poses[f["scan"]]
+            wp2.append(ds._xyz[a:b] @ T[:3, :3].T + T[:3, 3])
+        PW2 = np.vstack(wp2)
+        z2 = PW2[:, 2]
+        hh2, ee2 = np.histogram(z2[z2 < np.median(z2)], bins=100)
+        gnd = float(ee2[int(np.argmax(hh2))])
+
+        per_track = {}
+        for f in out["frames"]:
+            T = poses[f["scan"]]
+            for b in f["boxes"]:
+                c = np.array(b["center"]) @ T[:3, :3].T + T[:3, 3]
+                yw = b["yaw"] + yaw_of(T[:3, :3])
+                per_track.setdefault(b["track_id"], []).append((c, b["size"], yw))
+
+        drop = {}
+        for tid, v in per_track.items():
+            c, size, yw = v[len(v) // 2]              # 중간 프레임을 대표로
+            l, wd, h = size
+            d = PW2[:, :2] - c[:2]
+            ca, sa = np.cos(-yw), np.sin(-yw)
+            lo = np.stack([d[:, 0] * ca - d[:, 1] * sa,
+                           d[:, 0] * sa + d[:, 1] * ca], axis=1)
+            zr = z2 - gnd
+            foot = (np.abs(lo[:, 0]) < l / 2) & (np.abs(lo[:, 1]) < wd / 2)
+            body = foot & (zr > 0.3) & (zr < 1.8)
+            nb = int(body.sum())
+            if nb < 30:
+                continue                              # 점이 없으면 판단 보류
+            above = (foot & (zr > 1.95) & (zr < 2.8)).sum() / nb
+            roof = foot & (zr > 1.15) & (zr < 1.8)
+            area = (len(np.unique(np.round(lo[roof] / 0.2).astype(int), axis=0))
+                    * 0.04 / (l * wd)) if roof.sum() > 20 else 0.0
+            if above > args.max_above:
+                drop[tid] = f"지붕 위에 점이 많다 {above:.2f}"
+            elif area < args.min_roof_area:
+                drop[tid] = f"지붕이 없다 {area:.2f}"
+        if drop:
+            for f in out["frames"]:
+                f["boxes"] = [b for b in f["boxes"] if b["track_id"] not in drop]
+            total = sum(len(f["boxes"]) for f in out["frames"])
+            out["n_tracks"] = len(per_track) - len(drop)
+            print(f"→ 내보낼 박스 재검사: {len(drop)} 개 트랙 탈락")
+            for tid, why in sorted(drop.items()):
+                print(f"     {tid}: {why}")
+        else:
+            print("→ 내보낼 박스 재검사: 탈락 없음")
+
     with open(args.out, "w") as fp:
         json.dump(out, fp, indent=1, ensure_ascii=False)
     before = len(obs)
     print(f"\n박스 {before} → {total} 개 (프레임당 {before/len(frames):.1f} → {total/len(frames):.1f})")
-    print(f"  트랙 {len(tracks)} 개, 검출이 빠졌던 자리를 채운 것 {filled} 개")
+    print(f"  트랙 {out['n_tracks']} 개, 검출이 빠졌던 자리를 채운 것 {filled} 개")
     print(f"  원본 기하 {kept_raw} 개 · 전파로 채운 것 {filled} 개 (점에 맞춘 것 {snapped} 개)")
     print(f"저장: {args.out}")
 
