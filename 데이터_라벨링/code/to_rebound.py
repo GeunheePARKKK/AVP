@@ -81,6 +81,8 @@ def main():
     ap.add_argument("--poses", required=True)
     ap.add_argument("--keyframes", required=True)
     ap.add_argument("--detections", default=None)
+    ap.add_argument("--extra", default=None,
+                    help="같은 키프레임 구조의 추가 검출 (예: cones.json). 합쳐 넣는다")
     ap.add_argument("-o", "--out", required=True)
     ap.add_argument("--n-sweep", type=int, default=10)
     args = ap.parse_args()
@@ -95,6 +97,10 @@ def main():
     poses = load_poses(args.poses)
     kf = json.load(open(args.keyframes))["keyframes"]
     det = json.load(open(args.detections)) if args.detections else None
+    if det and args.extra:
+        ex = {f["keyframe"]: f["boxes"] for f in json.load(open(args.extra))["frames"]}
+        for f in det["frames"]:
+            f["boxes"] = f["boxes"] + ex.get(f["keyframe"], [])
     meta = json.load(open(os.path.join(args.session, "meta.json")))
     cal = yaml.safe_load(open(CALIB))["cameras"]
 

@@ -236,7 +236,9 @@ session_031 T016 실측:
 | `--row-spacing` | 0.8~2.5 m | **줄지어 선 짝이 있으면** 한 번만 보여도 받는다 |
 | `--size` | 0.45, 0.45, 0.75 | 규격품이라 고정 |
 
-**결과: 후보 47 개 → 42 개 (물체 11 개, 그중 줄지어 선 것 6 개)**
+**결과: 후보 47 개 → 42 개 · 물체 6 개 (`C000`~`C005`, 전부 한 줄)**
+
+트랙 ID 를 주므로 프레임이 바뀌어도 같은 꼬깔콘은 같은 ID 다. 차량(`T000`…)과 구분되게 `C` 로 시작한다.
 
 ### 테이퍼보다 열 구조가 낫다
 
@@ -254,7 +256,8 @@ session_031 T016 실측:
 
 ```bash
 python3 데이터_라벨링/code/to_rebound.py <세션> --poses <deskew_on> --keyframes keyframes.json \
-    --detections <결과>/autolabel/refined.json --n-sweep 30 -o <ReBound 폴더>
+    --detections <결과>/autolabel/refined.json --extra <결과>/autolabel/cones.json \
+    --n-sweep 30 -o <ReBound 폴더>
 ```
 
 | 설정 | 값 | 왜 |
@@ -263,9 +266,11 @@ python3 데이터_라벨링/code/to_rebound.py <세션> --poses <deskew_on> --ke
 
 ```
 rebound/session_031/
-├── bounding/0~24/boxes.json          407 개  ← 여기서 작업 (confidence 100)
-├── pred_bounding/0~24/boxes.json     407 개  ← 비교용
-└── pred_bounding_original/           407 개  ← 백업
+├── bounding/0~24/boxes.json          449 개  ← 여기서 작업 (confidence 100)
+├── pred_bounding/0~24/boxes.json     449 개  ← 비교용
+└── pred_bounding_original/           449 개  ← 백업
+
+내역: `car` **407** + `traffic_cone` **42**
 ```
 
 용량 408 MB (10 스윕일 때 213 MB). 박스 `id` 가 곧 트랙 ID 라 **프레임이 바뀌어도 같은 차는 같은 ID** 다.
@@ -287,6 +292,7 @@ bash ~/Documents/Lidar_Camera_Calibration/데이터_라벨링/code/run_rebound.s
 
 ```bash
 python3 데이터_라벨링/code/render_lidar_3d.py <세션> --poses <deskew_on> --detections <refined.json> \
+    --extra <cones.json> \
     --eye=-22,0,16 --target=4,0,-0.5 --n-sweep 30 --color height \
     --drop-ground 0.25 --max-height 2.2 -o lidar3d.mp4
 ```
@@ -304,4 +310,4 @@ python3 데이터_라벨링/code/render_lidar_3d.py <세션> --poses <deskew_on>
 
 ## 10 단계부터 할 일
 
-사람이 ReBound 에서 박스 407 개를 확인·수정한다. 남은 오탐(벽·기둥)과 어긋난 박스는 **검출기 자체의 오차**이며 자동으로는 더 줄이지 못한다.
+사람이 ReBound 에서 박스 449 개(차량 407 · 꼬깔콘 42)를 확인·수정한다. 남은 오탐(벽·기둥)과 어긋난 박스는 **검출기 자체의 오차**이며 자동으로는 더 줄이지 못한다.

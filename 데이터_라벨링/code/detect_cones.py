@@ -201,6 +201,7 @@ def main():
             c = np.array(b["center"]) @ T[:3, :3].T + T[:3, 3]
             obs.append((f["keyframe"], c, b))
     keep = set()
+    tid_of = {}
     if obs:
         cen = np.array([o[1][:2] for o in obs])
         tree = cKDTree(cen)
@@ -230,11 +231,17 @@ def main():
                         in_row[i] = True
                         break
 
+        tid_of = {}
+        nkeep = 0
         for i, (root, idxs, views) in enumerate(ov):
             # 줄지어 있으면 한 번만 보여도 받아들이고, 외톨이는 여러 번 봐야 한다
             need = 1 if in_row[i] else args.min_views
             if views >= need:
                 keep.update(idxs)
+                tid = f"C{nkeep:03d}"
+                nkeep += 1
+                for j in idxs:
+                    tid_of[j] = (tid, views, bool(in_row[i]))
         print(f"  물체 {len(ov)} 개 · 그중 줄지어 선 것 {int(in_row.sum())} 개")
     kept = 0
     out = {"source": "detect_bollards.py", "params": vars(args), "frames": []}
@@ -243,6 +250,10 @@ def main():
         bs = []
         for b in f["boxes"]:
             if gi in keep:
+                tid, views, row = tid_of[gi]
+                b["track_id"] = tid
+                b["views"] = views
+                b["in_row"] = row
                 bs.append(b)
             gi += 1
         kept += len(bs)
