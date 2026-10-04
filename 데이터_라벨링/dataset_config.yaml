@@ -23,12 +23,14 @@ classes:
   # 나타날 수 있고, 그때 작업자가 건너뛰지 않게 하려는 것이다.
 
   # --- 바닥 설치물 ---
-  bollard:      {size: [0.1, 0.1, 0.7], fixed_size: true, fixed_yaw: true,
+  traffic_cone: {size: [0.45, 0.45, 0.75], fixed_size: true, fixed_yaw: true,
                  max_label_range_m: 10}
-  # 탄력 볼라드. 규격품이라 크기가 일정하다. 20 m 에서 점이 1~2 개뿐이라
-  # 크기와 방향을 라이다로 정할 수 없다. 크기·방향을 고정하고 중심 위치만 맞춘다.
-  traffic_cone: {size: [0.3, 0.3, 0.7], fixed_size: true, fixed_yaw: true,
-                 max_label_range_m: 10}
+  # 주행 유도 꼬깔콘. 규격품이라 크기가 일정하다. session_031 실측 (30 스윕 누적):
+  #   꼭대기 0.72 m · 바닥 폭 0.36~0.47 m · 꼭대기 폭 0.24 m · 1.4 m 간격으로 한 줄
+  # 10 m 를 넘기면 2 도 간격 탓에 링이 2 개뿐이라 보이지 않는다. 크기·방향을
+  # 고정하고 중심 위치만 맞춘다.
+  #
+  # 2026-10-04: bollard 클래스를 삭제했다. 촬영한 8 세션 어디에도 볼라드가 없다.
   cart:         {size: [1.0, 0.6, 1.0], max_label_range_m: 15}
 
 # 라벨링하지 않는 것 - 구조물이다
@@ -40,7 +42,7 @@ attributes:
   visibility: ["0-40", "41-60", "61-80", "81-100"]   # nuScenes 와 동일한 4 단계
 
 evaluation:
-  classes: [car, truck, bollard]
+  classes: [car, truck, traffic_cone]
   # 라벨링 후 인스턴스 수를 세어 확정한다. van/bus/motorcycle 등은 수가 모이면 추가.
 
   metric: center_distance
@@ -49,11 +51,11 @@ evaluation:
 
   thresholds_m:
     default: [0.5, 1.0, 2.0, 4.0]
-    bollard: [0.25, 0.5, 1.0, 2.0]   # 객체가 0.1 m 라 4 m 임계값은 의미가 없다
+    traffic_cone: [0.25, 0.5, 1.0, 2.0]   # 객체가 0.45 m 라 4 m 임계값은 의미가 없다
 
   max_range_m:
     default: 20
-    bollard: 10
+    traffic_cone: 10
   # 처음에는 라벨 40 m / 평가 30 m 로 잡았으나 실제 데이터를 보고 20 m 로 줄였다.
   # 30 m 에서 차 한 대에 점이 25 개뿐이라 세로로 1~2 링만 걸리고, 그러면 방향(yaw)과
   # 높이를 라이다로 정할 수 없다. 20 m 면 55 개로 쓸 만하다.

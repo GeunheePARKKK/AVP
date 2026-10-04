@@ -1,23 +1,31 @@
-"""볼라드를 라이다 점에서 직접 찾는다.
+"""주행 유도 꼬깔콘(traffic cone)을 라이다 점에서 직접 찾는다.
 
-    python3 detect_bollards.py <세션> --poses <deskew_on> --keyframes <keyframes.json> \
-        [--vehicles <refined.json>] -o bollards.json
+    python3 detect_cones.py <세션> --poses <deskew_on> --keyframes <keyframes.json> \
+        [--vehicles <refined.json>] -o cones.json
 
-왜 따로 만드나
---------------
-nuScenes 사전학습 검출기에는 **볼라드 클래스가 없다.** 가장 가까운 것이
-traffic_cone·barrier 인데, session_031 에서 10 m 이내로 나온 것이 traffic_cone
-4 개뿐이라 쓸 수 없다.
+왜 검출기를 안 쓰나
+-------------------
+nuScenes 사전학습 모델에 `traffic_cone` 클래스가 있긴 하다. 그런데 **실제로는
+못 잡는다.** session_028 에서 12 m 이내로 낸 traffic_cone 이 6 개뿐이고, 기하로
+찾은 것들과 1 m 안에서 겹친 것은 1 개(1 %)였다.
 
-반면 볼라드는 모양이 단순해서 기하로 찾기 쉽다. 지면에 서 있고, 가늘고
-(지름 약 0.1 m), 0.7 m 쯤 올라가며, 주변이 비어 있다. 30 스윕을 누적하면
-10 m 에서 수십 점이 찍힌다.
+이유는 점 개수다. 검출기는 10 스윕 입력을 받는데 그때 꼬깔콘은 10 m 에서 열 점
+남짓이고, PointPillars 의 voxel 이 0.25 m 라 voxel 한두 개에 다 들어간다.
+반면 30 스윕을 누적하면 같은 꼬깔콘이 수백 점이 된다 (실측 412~723 점).
+
+session_031 실측 (전방 좌측, 스캔 32, 1.4 m 간격으로 세 개)
+----------------------------------------------------------
+    중심            점    바닥폭   꼭대기폭   꼭대기 높이
+    (2.16, 3.66)   412   0.36     0.24      0.72 m
+    (3.58, 3.63)   681   0.40     0.24      0.72 m
+    (4.92, 3.69)   723   0.45     0.24      0.72 m
+
+**위로 갈수록 좁아지는 것**이 꼬깔콘의 표식이다. 기둥·벽은 폭이 일정하다.
 
 한계
 ----
-**20 m 를 넘기면 못 찾는다.** 2 도 간격이라 15 m 에서 링이 2 개, 20 m 에서
-1 개뿐이다. `dataset_config.yaml` 이 볼라드 라벨 범위를 10 m 로 잡은 것과 같은
-이유다.
+**10 m 를 넘기면 못 찾는다.** 2 도 간격이라 거기서 링이 2 개뿐이다.
+가까우면(3 m 이내) 아래쪽이 라이다 수직 시야(-15 도) 밖이라 윗부분만 보인다.
 """
 
 import argparse
@@ -70,18 +78,23 @@ def main():
     ap.add_argument("--n-sweep", type=int, default=30)
     ap.add_argument("--max-range", type=float, default=12.0,
                     help="이보다 멀면 링이 1~2 개라 못 찾는다")
+    ap.add_argument("--top-lo", type=float, default=0.45,
+                    help="꼭대기가 지면 위 이 높이 이상이어야 한다")
+    ap.add_argument("--top-hi", type=float, default=0.95)
+    ap.add_argument("--taper", type=float, default=0.85,
+                    help="윗부분 폭 / 아랫부분 폭 이 값 이하여야 한다 (원뿔은 좁아진다)")
     ap.add_argument("--z-lo", type=float, default=0.15, help="지면 위 몇 m 부터 볼 것인가")
-    ap.add_argument("--z-hi", type=float, default=1.00)
-    ap.add_argument("--eps", type=float, default=0.25, help="군집 연결 거리 (m)")
-    ap.add_argument("--min-points", type=int, default=6)
-    ap.add_argument("--max-width", type=float, default=0.45, help="볼라드 지름 상한 (m)")
-    ap.add_argument("--min-height", type=float, default=0.30)
-    ap.add_argument("--max-height", type=float, default=1.00)
-    ap.add_argument("--clear-radius", type=float, default=0.8,
-                    help="이 반경 안에 다른 점이 있으면 벽·차 일부로 본다")
-    ap.add_argument("--size", default="0.12,0.12,0.75", help="고정 크기 (규격품)")
+    ap.add_argument("--z-hi", type=float, default=1.05)
+    ap.add_argument("--eps", type=float, default=0.30, help="군집 연결 거리 (m)")
+    ap.add_argument("--min-points", type=int, default=20)
+    ap.add_argument("--max-width", type=float, default=0.60, help="바닥 지름 상한 (m)")
+    ap.add_argument("--min-height", type=float, default=0.15)
+    ap.add_argument("--max-height", type=float, default=0.95)
+    ap.add_argument("--clear-radius", type=float, default=0.25,
+                    help="꼬깔콘 바로 위 이 반경 안에 점이 이어지면 기둥·벽으로 본다")
+    ap.add_argument("--size", default="0.45,0.45,0.75", help="고정 크기 (규격품)")
     ap.add_argument("--link-dist", type=float, default=0.6,
-                    help="키프레임 사이에서 같은 볼라드로 묶을 거리 (m)")
+                    help="키프레임 사이에서 같은 꼬깔콘으로 묶을 거리 (m)")
     ap.add_argument("--min-views", type=int, default=2)
     args = ap.parse_args()
 
@@ -117,6 +130,7 @@ def main():
         m = (zr > args.z_lo) & (zr < args.z_hi) & (rng < args.max_range) & (rng > 1.5)
 
         # 차량 박스 안은 뺀다
+        veh_free = np.ones(len(A), bool)
         for b in veh.get(k, []):
             c = np.array(b["center"])
             l, w, h = b["size"]
@@ -125,13 +139,18 @@ def main():
             ca, sa = np.cos(-y), np.sin(-y)
             lo = np.stack([d[:, 0] * ca - d[:, 1] * sa,
                            d[:, 0] * sa + d[:, 1] * ca], axis=1)
-            m &= ~((np.abs(lo[:, 0]) < l / 2 + 0.4) & (np.abs(lo[:, 1]) < w / 2 + 0.4))
+            veh_free &= ~((np.abs(lo[:, 0]) < l / 2 + 0.4) & (np.abs(lo[:, 1]) < w / 2 + 0.4))
+        m &= veh_free
 
         P = A[m]
         if len(P) < args.min_points:
             continue
-        # 주변이 비었는지 보려면 밴드 밖 점도 필요하다 (벽은 위아래로 이어진다)
-        tall = A[(zr > args.z_hi) & (zr < 2.5) & (rng < args.max_range)]
+        # 기둥·벽은 위로 이어진다. 그걸 보려면 밴드 밖 점이 필요한데,
+        # **차량 박스는 여기서도 빼야 한다.** 꼬깔콘 바로 뒤에 주차된 차가 있으면
+        # 차체(1.4~1.8 m)가 걸려 멀쩡한 꼬깔콘이 전부 탈락한다.
+        up_m = (zr > 1.0) & (zr < 2.6) & (rng < args.max_range) & veh_free
+        tall = A[up_m]
+        tall_z = zr[up_m]
         tall_tree = cKDTree(tall[:, :2]) if len(tall) else None
 
         boxes = []
@@ -147,17 +166,28 @@ def main():
             hgt = zz.max() - zz.min()
             if not (args.min_height <= hgt <= args.max_height):
                 continue
-            if zz.min() > 0.45:                 # 바닥에서 시작해야 한다
-                continue
+            if not (args.top_lo <= zz.max() <= args.top_hi):
+                continue                        # 꼬깔콘 키는 0.7 m 안팎이다
+            # 위로 갈수록 좁아지는가. 기둥·벽은 폭이 일정하다.
+            mid = zz.max() - 0.25
+            up, dn = zz >= mid, zz < mid
+            if up.sum() >= 4 and dn.sum() >= 4:
+                wu = max(q[up, 0].max() - q[up, 0].min(), q[up, 1].max() - q[up, 1].min())
+                wd = max(q[dn, 0].max() - q[dn, 0].min(), q[dn, 1].max() - q[dn, 1].min())
+                if wd > 0.05 and wu / wd > args.taper:
+                    continue
             cx, cy = q[:, 0].mean(), q[:, 1].mean()
-            # 위로 이어지면 기둥·벽이다
-            if tall_tree is not None and tall_tree.query_ball_point([cx, cy], 0.35):
-                continue
-            boxes.append({"class": "bollard", "score": 0.5,
+            # 위로 이어지면 기둥·벽이다. 꼬깔콘 **바로 위**만 본다 —
+            # 멀리 있는 천장 배관이나 옆 구조물에 걸리지 않도록.
+            if tall_tree is not None:
+                nb = tall_tree.query_ball_point([cx, cy], args.clear_radius)
+                if nb and (tall_z[nb] < zz.max() + 0.9).any():
+                    continue
+            boxes.append({"class": "traffic_cone", "score": 0.5,
                           "center": [float(cx), float(cy), float(gnd)],
                           "size": [L, W, H], "yaw": 0.0, "points": len(grp)})
         found.append({"keyframe": idx, "scan": k, "boxes": boxes})
-        print(f"  {idx+1}/{len(scans)}  스캔 {k}  볼라드 후보 {len(boxes)}")
+        print(f"  {idx+1}/{len(scans)}  스캔 {k}  꼬깔콘 후보 {len(boxes)}")
 
     # 키프레임 사이에서 묶어, 한 번만 보인 것은 버린다
     obs = []

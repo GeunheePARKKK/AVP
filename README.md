@@ -106,15 +106,15 @@ bash 데이터_라벨링/code/run_session.sh 032 2026-10-04
 
 | | |
 |---|---|
-| 라벨링 클래스 | 10 개 (car, truck, van, bus, motorcycle, bicycle, pedestrian, bollard, traffic_cone, cart) |
-| 평가 클래스 | car · truck · bollard (라벨링 후 인스턴스 수를 세어 확정) |
+| 라벨링 클래스 | 9 개 (car, truck, van, bus, motorcycle, bicycle, pedestrian, traffic_cone, cart) |
+| 평가 클래스 | car · truck · traffic_cone (라벨링 후 인스턴스 수를 세어 확정) |
 | 메트릭 | 중심점 거리 0.5/1/2/4 m 기준 mAP + ATE/ASE/AOE. 3D IoU 는 16 빔에 가혹하다 |
-| 거리 | 라벨 40 m / 평가 30 m (볼라드는 10 m) |
+| 거리 | 라벨 40 m / 평가 30 m (꼬깔콘은 10 m) |
 | 속성 | vehicle_state, covered(차량 커버), visibility 4 단계 |
 
 **표본에서 보행자 0 명, 꼬깔콘 0 개.** 그래도 클래스는 선언해 둔다 — 표본 밖 프레임에 나타날 때 작업자가 건너뛰지 않게 하려는 것이다. 평가에는 넣지 않는다 (인스턴스 0 이면 AP 가 0/0 이 된다).
 
-볼라드는 20 m 에서 점이 1~2 개뿐이라 **크기·방향을 고정하고 중심 위치만** 맞춘다.
+꼬깔콘은 10 m 를 넘기면 링이 2 개뿐이라 **크기·방향을 고정하고 중심 위치만** 맞춘다.
 
 **7. 카메라 매핑** — [`데이터_라벨링/카메라_매핑.md`](데이터_라벨링/카메라_매핑.md)
 
