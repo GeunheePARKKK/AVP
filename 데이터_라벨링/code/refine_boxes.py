@@ -480,8 +480,8 @@ def main():
             wp2.append(ds._xyz[a:b] @ T[:3, :3].T + T[:3, 3])
         PW2 = np.vstack(wp2)
         z2 = PW2[:, 2]
-        hh2, ee2 = np.histogram(z2[z2 < np.median(z2)], bins=100)
-        gnd = float(ee2[int(np.argmax(hh2))])
+        from scipy.spatial import cKDTree as _KD
+        xy_tree = _KD(PW2[:, :2])
 
         per_track = {}
         for f in out["frames"]:
@@ -500,13 +500,39 @@ def main():
             ca, sa = np.cos(-yw), np.sin(-yw)
             lo = np.stack([d[:, 0] * ca - d[:, 1] * sa,
                            d[:, 0] * sa + d[:, 1] * ca], axis=1)
+            # ── 지면과 천장을 **그 박스 주변에서** 잰다 ──────────────────
+            # 전역 한 값으로 잡으면 안 된다. session_034 는 120 초 주행이라
+            # 램프를 오르내려 전역 지면이 −1.23 m 로 나왔고 (다른 세션 −1.9),
+            # 천장도 2.48 m 로 낮아 (다른 세션 3.1~3.2) 고정 띠 1.95~2.8 m 가
+            # 천장을 그대로 긁었다. 그 결과 멀쩡한 차 95 대 중 다수가 탈락했다.
+            near_i = xy_tree.query_ball_point(c[:2], max(l, wd) / 2 + 3.0)
+            if len(near_i) < 200:
+                continue
+            zn = z2[near_i]
+            hg, eg = np.histogram(zn[zn < np.median(zn)], bins=60)
+            gnd = float(eg[int(np.argmax(hg))])
+            hi = zn[zn > gnd + 2.0]
+            if len(hi) > 300:
+                hc, ec = np.histogram(hi, bins=40)
+                ceil = float(ec[int(np.argmax(hc))]) - gnd
+            else:
+                ceil = 3.0
+
             zr = z2 - gnd
             foot = (np.abs(lo[:, 0]) < l / 2) & (np.abs(lo[:, 1]) < wd / 2)
             body = foot & (zr > 0.3) & (zr < 1.8)
             nb = int(body.sum())
             if nb < 30:
                 continue                              # 점이 없으면 판단 보류
-            above = (foot & (zr > 1.95) & (zr < 2.8)).sum() / nb
+            # ── 검사는 **그 차의 지붕 높이** 기준으로 한다 ──────────────
+            # 장면 전체 기준(1.95~2.8 m 고정)으로 재면, 천장이 낮거나 램프처럼
+            # 경사진 구간에서 천장이 띠에 들어와 멀쩡한 차가 탈락한다.
+            # session_034 는 천장 2.48 m 에 경사 구간까지 있어 95 대가 떨어졌다.
+            top_z = float(np.percentile(zr[body], 97))        # 이 차의 지붕
+            up_lo = top_z + 0.25
+            up_hi = min(top_z + 0.90, ceil - 0.35)
+            above = ((foot & (zr > up_lo) & (zr < up_hi)).sum() / nb
+                     if up_hi - up_lo > 0.2 else 0.0)
             roof = foot & (zr > 1.15) & (zr < 1.8)
             area = (len(np.unique(np.round(lo[roof] / 0.2).astype(int), axis=0))
                     * 0.04 / (l * wd)) if roof.sum() > 20 else 0.0
@@ -514,7 +540,9 @@ def main():
             # 격자 셀이 적으면 측정이 흔들리므로 35 개 이상일 때만 본다.
             # 몸통대(0.3~1.8 m)로 재면 계단이 올라가는 부분이 잘려 신호가 사라진다.
             # 평탄도만 2.0 m 까지 본다.
-            flat = foot & (zr > 0.3) & (zr < 2.0)
+            # 평탄도는 조금 위까지 본다 — 계단·경사로가 올라가는 부분이
+            # 잘리면 신호가 사라진다. 다만 천장은 넘지 않는다.
+            flat = foot & (zr > 0.3) & (zr < min(top_z + 0.60, ceil - 0.35))
             cell = np.round(lo[flat] / 0.35).astype(int)
             uk, inv = np.unique(cell, axis=0, return_inverse=True)
             roof_std = 0.0
@@ -544,7 +572,7 @@ def main():
                 c2, y2 = keep_pose[tid]
                 nb = [keep_pose[o][1] for o in ids2
                       if o != tid and np.linalg.norm(keep_pose[o][0] - c2) < 12.0]
-                if len(nb) < 4:
+                if len(nb) < 6:
                     continue                       # 이웃이 적으면 판단 보류
                 dd = 2 * np.asarray(nb)
                 med = 0.5 * np.arctan2(np.sin(dd).mean(), np.cos(dd).mean())
