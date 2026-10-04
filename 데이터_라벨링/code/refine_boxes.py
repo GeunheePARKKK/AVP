@@ -66,7 +66,10 @@ def main():
     ap.add_argument("--link-iou", type=float, default=0.3,
                     help="BEV IoU 가 이보다 크면 같은 물체로 묶는다")
     ap.add_argument("--link-dist", type=float, default=2.5,
-                    help="묶기 후보를 추릴 거리 (m). IoU 계산을 줄이기 위한 것")
+                    help="(사용하지 않음) 예전 연쇄 묶기의 후보 거리")
+    ap.add_argument("--max-track-span", type=float, default=1.5,
+                    help="한 트랙의 관측이 퍼질 수 있는 최대 거리 (m). 정지한 차는 "
+                         "1 m 안에 모인다. 넘으면 다른 차가 섞인 것")
     ap.add_argument("--min-views", type=int, default=3,
                     help="이 횟수 미만으로 관측된 군집은 버린다")
     ap.add_argument("--min-points", type=int, default=5,
@@ -150,24 +153,39 @@ def main():
         bb = b["size"][0] * b["size"][1]
         return float(inter / max(aa + bb - inter, 1e-9))
 
+    # **연쇄로 이어 붙이면 안 된다.** 주차열에서 A 가 B 와 조금 겹치고 B 가 C 와
+    # 겹치면 열 전체가 한 군집이 된다. session_034(170 키프레임)에서 186 군집 중
+    # 54 개가 2 m 넘게 퍼졌고, 최악은 12.3 m 였다 — 차 두세 대가 한 트랙이 되어
+    # 나머지 차는 박스를 아예 못 받았다.
+    #
+    # 그래서 **군집 중심에서 일정 거리 안**에 있고, **그 중심 박스와 겹치는**
+    # 것만 받아들인다. 정지한 차 한 대의 관측은 1 m 안에 모인다.
     cent = np.array([o["center"][:2] for o in obs])
+    order = np.argsort([-o["score"] for o in obs])   # 점수 높은 것부터 씨앗으로
     used = np.zeros(len(obs), bool)
     clusters = []
-    for i in range(len(obs)):
+    for i in order:
         if used[i]:
             continue
-        grp = [i]
+        grp = [int(i)]
         used[i] = True
-        head = 0
-        while head < len(grp):                      # 연쇄로 이어 붙인다
-            d = np.linalg.norm(cent - cent[grp[head]], axis=1)
-            for j in np.where((d < args.link_dist) & (~used))[0]:
-                if _iou(obs[grp[head]], obs[int(j)]) >= args.link_iou:
+        c0 = cent[i].copy()
+        while True:
+            d = np.linalg.norm(cent - c0, axis=1)
+            cand = np.where((d < args.max_track_span) & (~used))[0]
+            added = False
+            for j in cand:
+                if _iou(obs[int(i)], obs[int(j)]) >= args.link_iou:
                     grp.append(int(j))
                     used[j] = True
-            head += 1
+                    added = True
+            if not added:
+                break
+            c0 = cent[grp].mean(axis=0)              # 중심을 갱신하고 한 번 더
         clusters.append(grp)
-    print(f"→ 군집 {len(clusters)} 개")
+    sp = [float(np.linalg.norm(cent[g].max(0) - cent[g].min(0))) for g in clusters]
+    print(f"→ 군집 {len(clusters)} 개 (퍼진 거리 중앙값 {np.median(sp):.2f} m, "
+          f"최대 {max(sp):.2f} m)")
 
     # ---------- 3. 관측이 적은 것 버리기 ----------
     kept = []
