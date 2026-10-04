@@ -89,6 +89,12 @@ def main():
     ap.add_argument("--min-roof-area", type=float, default=0.05,
                     help="지붕대(지면+1.15~1.8 m) 점이 박스 바닥면에서 차지하는 비율. "
                          "차는 0.08 이상, 지붕이 없는 구조물은 0.02 이하")
+    ap.add_argument("--max-roof-std", type=float, default=0.42,
+                    help="박스 윗면 높이의 표준편차(m). 차는 지붕이 평평해 0.20~0.35, "
+                         "계단·경사로는 0.47 이상. 격자 셀 35 개 이상일 때만 적용")
+    ap.add_argument("--max-row-angle", type=float, default=60.0,
+                    help="주변 주차열 방향과 이만큼(도) 넘게 어긋나면 버린다. "
+                         "실측: 정상 0~41 도, 90 도 뒤집힌 박스 87~88 도")
     ap.add_argument("--continue-ratio", type=float, default=0.6,
                     help="박스 양 끝 너머로 점이 이만큼 이어지면 벽으로 본다")
     args = ap.parse_args()
@@ -442,6 +448,7 @@ def main():
                 per_track.setdefault(b["track_id"], []).append((c, b["size"], yw))
 
         drop = {}
+        keep_pose = {}
         for tid, v in per_track.items():
             c, size, yw = v[len(v) // 2]              # 중간 프레임을 대표로
             l, wd, h = size
@@ -459,10 +466,48 @@ def main():
             roof = foot & (zr > 1.15) & (zr < 1.8)
             area = (len(np.unique(np.round(lo[roof] / 0.2).astype(int), axis=0))
                     * 0.04 / (l * wd)) if roof.sum() > 20 else 0.0
+            # 윗면 평탄도 — 차는 지붕이 거의 수평이고, 계단·경사로는 올라간다.
+            # 격자 셀이 적으면 측정이 흔들리므로 35 개 이상일 때만 본다.
+            # 몸통대(0.3~1.8 m)로 재면 계단이 올라가는 부분이 잘려 신호가 사라진다.
+            # 평탄도만 2.0 m 까지 본다.
+            flat = foot & (zr > 0.3) & (zr < 2.0)
+            cell = np.round(lo[flat] / 0.35).astype(int)
+            uk, inv = np.unique(cell, axis=0, return_inverse=True)
+            roof_std = 0.0
+            if len(uk) >= 35:
+                tops = np.zeros(len(uk))
+                zb = zr[flat]
+                for ci in range(len(uk)):
+                    tops[ci] = zb[inv == ci].max()
+                roof_std = float(tops.std())
+
+            if os.environ.get("REFINE_DEBUG"):
+                print(f"     [디버그] {tid} above {above:.2f} area {area:.2f} "
+                      f"roof_std {roof_std:.3f} cells {len(uk)}")
             if above > args.max_above:
                 drop[tid] = f"지붕 위에 점이 많다 {above:.2f}"
             elif area < args.min_roof_area:
                 drop[tid] = f"지붕이 없다 {area:.2f}"
+            elif roof_std > args.max_roof_std:
+                drop[tid] = f"윗면이 평평하지 않다 {roof_std:.2f} (계단·경사로)"
+            else:
+                keep_pose[tid] = (c[:2], yw)
+        # 주변 주차열 방향과 90 도 어긋난 박스. 주차된 차는 이웃과 나란하다.
+        # 방향은 180 도 주기로 본다 (앞뒤 뒤집힘은 같은 박스, 90 도는 다른 박스).
+        if len(keep_pose) >= 5:
+            ids2 = sorted(keep_pose)
+            for tid in ids2:
+                c2, y2 = keep_pose[tid]
+                nb = [keep_pose[o][1] for o in ids2
+                      if o != tid and np.linalg.norm(keep_pose[o][0] - c2) < 12.0]
+                if len(nb) < 4:
+                    continue                       # 이웃이 적으면 판단 보류
+                dd = 2 * np.asarray(nb)
+                med = 0.5 * np.arctan2(np.sin(dd).mean(), np.cos(dd).mean())
+                diff = abs(np.degrees(wrap(2 * (y2 - med)))) / 2
+                if diff > args.max_row_angle:
+                    drop[tid] = f"주차열과 {diff:.0f} 도 어긋남"
+
         if drop:
             for f in out["frames"]:
                 f["boxes"] = [b for b in f["boxes"] if b["track_id"] not in drop]
