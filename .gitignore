@@ -19,3 +19,6 @@ calib_result/*_overlay/
 
 # 캘리브레이션 원본 압축본 (830MB, 로컬 보관)
 calib_.zip
+
+# 확인용 영상은 로컬에만 둔다 (~/ros2_ws/cam_lidar_recording/sessions/)
+*.mp4

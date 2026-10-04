@@ -262,7 +262,7 @@ rebound/session_031/
 
 ![라이다 3D](라이다3D_프레임.jpg)
 
-[`라이다3D_20초.mp4`](라이다3D_20초.mp4) (1280×720, 9.1 MB). 원본은 `~/ros2_ws/cam_lidar_recording/sessions/session_031/lidar3d_20s.mp4` (1600×900, 73 MB).
+영상도 레포에 올리지 않는다. 로컬의 `~/ros2_ws/cam_lidar_recording/sessions/session_031/lidar3d_20s.mp4` (1600×900, 73 MB) 를 본다.
 
 ```bash
 PYTHONPATH=<kiss-icp 환경> python3 데이터_라벨링/code/render_lidar_3d.py \
@@ -277,8 +277,13 @@ PYTHONPATH=<kiss-icp 환경> python3 데이터_라벨링/code/render_lidar_3d.py
 
 ![검출 박스](검출박스_프레임.jpg)
 
-[`검출박스_20초.mp4`](검출박스_20초.mp4) — **10 단계까지 적용한 박스** (1280×750, 5.8 MB). 원본 해상도는 `~/ros2_ws/cam_lidar_recording/sessions/session_031/boxes_refined.mp4` (1920×1124, 108 MB). 다듬기 전 영상은 같은 폴더의 `boxes_20s.mp4` 다.
+확인용 영상은 **레포에 올리지 않는다** (용량). 로컬에서 본다:
 
+```
+~/ros2_ws/cam_lidar_recording/sessions/session_031/boxes_refined.mp4
+```
+
+다듬기 전 영상은 같은 폴더의 `boxes_20s.mp4` 다. 위 그림이 그 영상의 한 장면이다.
 보정 없는 원본 영상은 `~/ros2_ws/cam_lidar_recording/sessions/session_031/full_20s.mp4` 다.
 
 ---

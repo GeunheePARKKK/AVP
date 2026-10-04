@@ -83,4 +83,10 @@ bash 데이터_라벨링/code/run_rebound.sh ~/ros2_ws/cam_lidar_recording/rebou
 
 ![검출 박스](검출박스_프레임.jpg)
 
-[`검출박스_20초.mp4`](검출박스_20초.mp4) — 전체가 아니라 **20~40 초 구간 발췌** (5.6 MB). 원본 해상도는 `~/ros2_ws/cam_lidar_recording/sessions/session_033/boxes_refined.mp4` (324 MB).
+확인용 영상은 **레포에 올리지 않는다** (용량). 로컬에서 본다:
+
+```
+~/ros2_ws/cam_lidar_recording/sessions/session_033/boxes_refined.mp4
+```
+
+다듬기 전 영상은 같은 폴더의 `boxes_20s.mp4` 다. 긴 세션이라 전체가 아니라 중간 20 초 구간만 보면 된다. 위 그림이 그 영상의 한 장면이다.

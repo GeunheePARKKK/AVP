@@ -91,9 +91,13 @@ bash 데이터_라벨링/code/run_rebound.sh ~/ros2_ws/cam_lidar_recording/rebou
 
 ![다듬기 전후](다듬기_전후.jpg)
 
-[`검출박스_20초.mp4`](검출박스_20초.mp4) — 10 단계까지 적용한 박스 (1280×750, 6.2 MB).
-원본 해상도는 `~/ros2_ws/cam_lidar_recording/sessions/session_025/boxes_refined.mp4` (1920×1124, 136 MB), 다듬기 전은 같은 폴더의 `boxes_20s.mp4` 다.
+확인용 영상은 **레포에 올리지 않는다** (용량). 로컬에서 본다:
 
+```
+~/ros2_ws/cam_lidar_recording/sessions/session_025/boxes_refined.mp4
+```
+
+다듬기 전 영상은 같은 폴더의 `boxes_20s.mp4` 다. 위 그림이 그 영상의 한 장면이다.
 ## 13 단계부터 할 일
 
 사람이 ReBound 에서 박스를 고친다. 남은 오탐(벽·기둥·구조물)과 어긋난 박스는 **검출기 자체의 오차**이며 자동으로는 더 줄이지 못한다.
