@@ -96,6 +96,10 @@ def main():
     ap.add_argument("--link-dist", type=float, default=0.6,
                     help="키프레임 사이에서 같은 꼬깔콘으로 묶을 거리 (m)")
     ap.add_argument("--min-views", type=int, default=2)
+    ap.add_argument("--row-spacing", default="0.8,2.5",
+                    help="꼬깔콘 열의 이웃 간격 범위 (m). 이 안에 짝이 있으면 믿는다")
+    ap.add_argument("--no-row", action="store_true",
+                    help="열 구조를 쓰지 않는다 (외톨이 꼬깔콘만 있는 데이터용)")
     args = ap.parse_args()
 
     here = os.path.dirname(os.path.abspath(__file__))
@@ -200,10 +204,38 @@ def main():
     if obs:
         cen = np.array([o[1][:2] for o in obs])
         tree = cKDTree(cen)
-        for i, o in enumerate(obs):
+        # 같은 꼬깔콘을 키프레임 사이에서 묶어 물체 단위로 본다
+        obj = {}
+        for i in range(len(obs)):
             nb = tree.query_ball_point(cen[i], args.link_dist)
-            if len(set(obs[j][0] for j in nb)) >= args.min_views:
-                keep.add(i)
+            root = min(nb)
+            obj.setdefault(root, []).append(i)
+        # 물체 중심과 관측 횟수
+        oc, ov = [], []
+        for root, idxs in obj.items():
+            oc.append(cen[idxs].mean(axis=0))
+            ov.append((root, idxs, len(set(obs[j][0] for j in idxs))))
+        oc = np.array(oc)
+
+        # 꼬깔콘은 **줄지어 선다.** 1 m 안팎 간격으로 짝이 있으면 믿을 만하다.
+        # 테이퍼(위로 좁아짐)보다 이쪽이 훨씬 잘 갈린다 — 바닥이 라이다 수직
+        # 시야 밖이라 좁은 윗부분만 보이는 경우가 많아 테이퍼가 흐려진다.
+        lo_s, hi_s = (float(x) for x in args.row_spacing.split(","))
+        in_row = np.zeros(len(oc), bool)
+        if len(oc) > 1 and not args.no_row:
+            t2 = cKDTree(oc)
+            for i in range(len(oc)):
+                for j in t2.query_ball_point(oc[i], hi_s):
+                    if j != i and lo_s <= np.linalg.norm(oc[j] - oc[i]) <= hi_s:
+                        in_row[i] = True
+                        break
+
+        for i, (root, idxs, views) in enumerate(ov):
+            # 줄지어 있으면 한 번만 보여도 받아들이고, 외톨이는 여러 번 봐야 한다
+            need = 1 if in_row[i] else args.min_views
+            if views >= need:
+                keep.update(idxs)
+        print(f"  물체 {len(ov)} 개 · 그중 줄지어 선 것 {int(in_row.sum())} 개")
     kept = 0
     out = {"source": "detect_bollards.py", "params": vars(args), "frames": []}
     gi = 0
