@@ -33,6 +33,69 @@ BAYER_CV = {
     "BayerRG8": cv2.COLOR_BayerRG2BGR, "BayerGB8": cv2.COLOR_BayerGB2BGR,
     "BayerGR8": cv2.COLOR_BayerGR2BGR, "BayerBG8": cv2.COLOR_BayerBG2BGR,
 }
+# 10·12·16 비트도 같은 Bayer 배열이다. 비트수만 다르다.
+for _b in ("RG", "GB", "GR", "BG"):
+    for _d in ("10", "12", "16"):
+        BAYER_CV[f"Bayer{_b}{_d}"] = BAYER_CV[f"Bayer{_b}8"]
+
+
+def _to8(arr, pixfmt):
+    """12 비트(uint16) 로 찍힌 것을 8 비트로 내린다.
+
+    session_037 부터 BayerGB12 로 찍는데, 변환표에 8 비트만 있어서
+    디모자이킹을 건너뛰고 흑백으로 나왔다. 색은 원본에 그대로 있다.
+    """
+    if arr.dtype != np.uint16:
+        return arr
+    bits = 16
+    for b in ("10", "12", "16"):
+        if pixfmt and pixfmt.endswith(b):
+            bits = int(b)
+            break
+    return (arr >> (bits - 8)).astype(np.uint8)
+# Bayer 2x2 배열에서 각 색이 어느 자리인지. OpenCV 이름 기준.
+BAYER_POS = {
+    "GB": {"G": [(0, 0), (1, 1)], "B": [(0, 1)], "R": [(1, 0)]},
+    "BG": {"B": [(0, 0)], "G": [(0, 1), (1, 0)], "R": [(1, 1)]},
+    "RG": {"R": [(0, 0)], "G": [(0, 1), (1, 0)], "B": [(1, 1)]},
+    "GR": {"G": [(0, 0), (1, 1)], "R": [(0, 1)], "B": [(1, 0)]},
+}
+
+
+def _wb_bayer(arr, pixfmt):
+    """디모자이킹 **전에** Bayer 평면에서 화이트밸런스를 건다.
+
+    Bayer 는 녹색 화소가 적·청의 두 배라 그냥 변환하면 전체가 초록으로 뜬다.
+    디모자이킹 후에 맞추면 이미 섞인 색을 되돌리는 셈이라 덜 정확하다.
+
+    게인은 **채널 평균**으로 구한다. 퍼센타일(99.5%)로 구하면 밝은 조명이
+    있는 장면에서 세 채널이 다 포화해 게인이 1.0 으로 나오고 보정이 통째로
+    사라진다 (session_039 cam3 이 그랬다).
+    """
+    if arr.ndim != 2 or not pixfmt or not pixfmt.startswith("Bayer"):
+        return arr
+    pos = BAYER_POS.get(pixfmt[5:7])
+    if pos is None:
+        return arr
+    f = arr.astype(np.float32)
+    mean = {}
+    for ch, cells in pos.items():
+        mean[ch] = float(np.mean([f[dy::2, dx::2].mean() for dy, dx in cells]))
+    if min(mean.values()) < 1.0:
+        return arr
+    for ch, cells in pos.items():
+        g = float(np.clip(mean["G"] / mean[ch], 0.25, 4.0))
+        if abs(g - 1.0) < 1e-3:
+            continue
+        for dy, dx in cells:
+            f[dy::2, dx::2] *= g
+    top = 4095.0 if (pixfmt.endswith("12") or arr.dtype == np.uint16) else 255.0
+    if pixfmt.endswith("10"):
+        top = 1023.0
+    elif pixfmt.endswith("16"):
+        top = 65535.0
+    return np.clip(f, 0, top).astype(arr.dtype)
+
 FONT = cv2.FONT_HERSHEY_SIMPLEX
 
 # cv2.putText 는 한글을 못 그린다 (전부 '?' 로 나온다). 캡션에만 PIL 을 쓴다.
@@ -169,14 +232,18 @@ def render_camera(cam_dir, fid, pixfmt, width, boost=True):
         return None
 
     if arr.ndim == 2:
+        arr = _wb_bayer(arr, pixfmt)
+        arr = _to8(arr, pixfmt)
         code = BAYER_CV.get(pixfmt)
         arr = (cv2.cvtColor(arr, code) if code
                else cv2.cvtColor(arr, cv2.COLOR_GRAY2BGR))
 
     if boost:
+        # 화이트밸런스는 _wb_bayer 에서 이미 걸었다. 여기서는 밝기만 올린다.
         # 상위 0.5% 를 흰색으로 잡고 감마로 어두운 쪽을 끌어올린다.
-        hi = max(float(np.percentile(arr, 99.5)), 1.0)
-        f = np.clip(arr.astype(np.float32) / hi, 0, 1)
+        f = arr.astype(np.float32)
+        hi = max(float(np.percentile(f, 99.5)), 1.0)
+        f = np.clip(f / hi, 0, 1)
         arr = (np.power(f, 0.55) * 255).astype(np.uint8)
 
     h = int(round(width * arr.shape[0] / arr.shape[1]))
