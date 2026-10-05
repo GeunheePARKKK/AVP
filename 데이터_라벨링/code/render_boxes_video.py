@@ -26,6 +26,12 @@ AVP = "/home/acelab/Documents/TalkFile_AVP_calib"
 USB_LATENCY_S = 0.0071
 BAYER = {"BayerRG8": cv2.COLOR_BayerRG2BGR, "BayerGB8": cv2.COLOR_BayerGB2BGR,
          "BayerGR8": cv2.COLOR_BayerGR2BGR, "BayerBG8": cv2.COLOR_BayerBG2BGR}
+
+# 10·12·16 비트도 같은 Bayer 배열이다. 비트수만 다르다.
+for _b in ("RG", "GB", "GR", "BG"):
+    for _d in ("10", "12", "16"):
+        BAYER[f"Bayer{_b}{_d}"] = BAYER[f"Bayer{_b}8"]
+
 # 화면 배치: 좌상 전방, 우상 우측, 좌하 좌측, 우하 후방
 LAYOUT = [("front", "전방 CAM3"), ("right", "우측 CAM1"),
           ("left", "좌측 CAM2"), ("rear", "후방 CAM4")]

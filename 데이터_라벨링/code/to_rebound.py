@@ -43,6 +43,12 @@ NAME = {"front": "CAM_FRONT", "left": "CAM_LEFT",
 BAYER = {"BayerRG8": cv2.COLOR_BayerRG2BGR, "BayerGB8": cv2.COLOR_BayerGB2BGR,
          "BayerGR8": cv2.COLOR_BayerGR2BGR, "BayerBG8": cv2.COLOR_BayerBG2BGR}
 
+# 10·12·16 비트도 같은 Bayer 배열이다. 비트수만 다르다.
+for _b in ("RG", "GB", "GR", "BG"):
+    for _d in ("10", "12", "16"):
+        BAYER[f"Bayer{_b}{_d}"] = BAYER[f"Bayer{_b}8"]
+
+
 
 def quat_from_R(R):
     """3x3 회전행렬 → (w, x, y, z)."""
