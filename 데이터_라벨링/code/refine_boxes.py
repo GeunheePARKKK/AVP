@@ -92,6 +92,10 @@ def main():
     ap.add_argument("--min-roof-area", type=float, default=0.05,
                     help="지붕대(지면+1.15~1.8 m) 점이 박스 바닥면에서 차지하는 비율. "
                          "차는 0.08 이상, 지붕이 없는 구조물은 0.02 이하")
+    ap.add_argument("--bridge-gap", type=int, default=3,
+                    help="트랙이 이 프레임 수 이하로 끊기면 앞뒤를 보간해 메운다. "
+                         "점 판정이 아슬아슬하게 실패해 한 프레임만 빠지는 깜빡임을 "
+                         "없앤다. 0 이면 끄기")
     ap.add_argument("--max-yaw-dev", type=float, default=30.0,
                     help="한 트랙 안에서 프레임별 방향이 트랙 합의에서 이만큼(도) 넘게 "
                          "벗어나면 합의 방향으로 돌린다. 주차된 차는 회전하지 않는다")
@@ -443,6 +447,52 @@ def main():
                           "views": t["views"], "points": n_in, "source": src})
         total += len(boxes)
         out["frames"].append({"keyframe": f["keyframe"], "scan": k, "boxes": boxes})
+
+    # ---------- 6.2 짧은 공백 메우기 ----------
+    # 박스가 있다가 한 프레임만 빠지고 다시 나오는 깜빡임이 많다 (session_034
+    # 에서 끊긴 180 곳 중 108 곳이 1 프레임짜리였다). 그 프레임에서 점 판정이
+    # 아슬아슬하게 실패한 것이지 물체가 사라진 게 아니다.
+    #
+    # 앞뒤가 모두 있는 짧은 공백만 보간해 메운다. 긴 공백(다시 지나가기 전까지)
+    # 은 그대로 둔다 — 그건 실제로 안 보이는 구간이다.
+    bridged = 0
+    if args.bridge_gap > 0:
+        idx_of = {f["keyframe"]: i for i, f in enumerate(out["frames"])}
+        have = {}
+        for f in out["frames"]:
+            for b in f["boxes"]:
+                have.setdefault(b["track_id"], {})[f["keyframe"]] = b
+        for tid, by_kf in have.items():
+            ks = sorted(by_kf)
+            for a, c in zip(ks, ks[1:]):
+                gap = c - a - 1
+                if not (0 < gap <= args.bridge_gap):
+                    continue
+                ba, bc = by_kf[a], by_kf[c]
+                Ta = poses[out["frames"][idx_of[a]]["scan"]]
+                Tc = poses[out["frames"][idx_of[c]]["scan"]]
+                wa = np.array(ba["center"]) @ Ta[:3, :3].T + Ta[:3, 3]
+                wc = np.array(bc["center"]) @ Tc[:3, :3].T + Tc[:3, 3]
+                ya = ba["yaw"] + yaw_of(Ta[:3, :3])
+                for kk in range(a + 1, c):
+                    if kk not in idx_of:
+                        continue
+                    fi = idx_of[kk]
+                    T = poses[out["frames"][fi]["scan"]]
+                    Tin = np.linalg.inv(T)
+                    u = (kk - a) / (c - a)
+                    w = wa * (1 - u) + wc * u
+                    cc = w @ Tin[:3, :3].T + Tin[:3, 3]
+                    if np.hypot(cc[0], cc[1]) >= args.max_range:
+                        continue
+                    out["frames"][fi]["boxes"].append(
+                        {**ba, "center": [float(x) for x in cc],
+                         "yaw": float(ya + yaw_of(Tin[:3, :3])),
+                         "source": "보간", "points": 0})
+                    bridged += 1
+        if bridged:
+            total = sum(len(f["boxes"]) for f in out["frames"])
+            print(f"→ 짧은 공백({args.bridge_gap} 프레임 이하)을 메운 박스 {bridged} 개")
 
     # ---------- 6.5 트랙 안에서 방향 맞추기 ----------
     # 박스 기하를 원본 검출에서 가져오므로, 검출기가 한두 프레임에서 방향을

@@ -47,7 +47,37 @@ def ground_of(z):
 
 
 def clusters(xy, eps):
-    """cKDTree 로 연결 요소를 찾는다 (DBSCAN 의 eps 연결과 같다)."""
+    """2D 점을 eps 거리로 이어 붙여 군집을 만든다.
+
+    격자에 올려 연결 성분을 찾는다. 점마다 이웃을 조회하는 방식은 벽처럼
+    점이 수만 개 뭉친 곳에서 감당이 안 된다 — session_037 에서 키프레임당
+    18~24 초가 걸렸고 244 장을 돌리다 멈췄다. 격자는 점 수에 선형이다.
+
+    격자 칸을 eps 로 잡고 8 방향으로 이으면, 거리 eps 이내를 잇는 것과
+    사실상 같은 결과가 나온다.
+    """
+    from scipy import ndimage
+
+    if len(xy) == 0:
+        return []
+    g = np.floor(xy / eps).astype(np.int64)
+    g -= g.min(axis=0)
+    h, w = int(g[:, 0].max()) + 3, int(g[:, 1].max()) + 3
+    if h * w > 40_000_000:                 # 격자가 너무 크면 예전 방식으로
+        return _clusters_slow(xy, eps)
+    occ = np.zeros((h, w), bool)
+    occ[g[:, 0] + 1, g[:, 1] + 1] = True
+    lab, n = ndimage.label(occ, structure=np.ones((3, 3), bool))
+    ids = lab[g[:, 0] + 1, g[:, 1] + 1]
+    order = np.argsort(ids, kind="stable")
+    ids_sorted = ids[order]
+    bounds = np.searchsorted(ids_sorted, np.arange(1, n + 2))
+    return [order[bounds[i]:bounds[i + 1]].tolist() for i in range(n)
+            if bounds[i + 1] > bounds[i]]
+
+
+def _clusters_slow(xy, eps):
+    """격자가 감당 안 될 때의 대비책 (cKDTree 연쇄)."""
     tree = cKDTree(xy)
     seen = np.zeros(len(xy), bool)
     out = []
@@ -98,6 +128,8 @@ def main():
     ap.add_argument("--min-views", type=int, default=2)
     ap.add_argument("--row-spacing", default="0.8,2.5",
                     help="꼬깔콘 열의 이웃 간격 범위 (m). 이 안에 짝이 있으면 믿는다")
+    ap.add_argument("--bridge-gap", type=int, default=3,
+                    help="트랙이 이 프레임 수 이하로 끊기면 앞뒤를 보간해 메운다")
     ap.add_argument("--no-fill", action="store_true",
                     help="빠진 키프레임을 채우지 않는다 (깜빡임을 그대로 둔다)")
     ap.add_argument("--fill-radius", type=float, default=0.35,
@@ -303,6 +335,39 @@ def main():
                      "size": [L, W, H], "yaw": 0.0, "points": n,
                      "track_id": tid, "source": "전파"})
                 filled += 1
+
+    # ---------- 짧은 공백 메우기 ----------
+    # 가려짐이나 점 부족으로 한두 프레임만 빠지는 깜빡임을 없앤다.
+    bridged = 0
+    if args.bridge_gap > 0:
+        scan_of = {f["keyframe"]: f["scan"] for f in found}
+        have = {}
+        for kfi, bs in per_frame.items():
+            for b in bs:
+                have.setdefault(b["track_id"], {})[kfi] = b
+        for tid, by_kf in have.items():
+            ks = sorted(by_kf)
+            for a, c in zip(ks, ks[1:]):
+                gap = c - a - 1
+                if not (0 < gap <= args.bridge_gap):
+                    continue
+                Ta, Tc = poses[scan_of[a]], poses[scan_of[c]]
+                wa = np.array(by_kf[a]["center"]) @ Ta[:3, :3].T + Ta[:3, 3]
+                wc = np.array(by_kf[c]["center"]) @ Tc[:3, :3].T + Tc[:3, 3]
+                for kk in range(a + 1, c):
+                    if kk not in scan_of:
+                        continue
+                    Tin = np.linalg.inv(poses[scan_of[kk]])
+                    u = (kk - a) / (c - a)
+                    cc = (wa * (1 - u) + wc * u) @ Tin[:3, :3].T + Tin[:3, 3]
+                    if np.hypot(cc[0], cc[1]) >= args.max_range:
+                        continue
+                    per_frame[kk].append({**by_kf[a],
+                                          "center": [float(x) for x in cc],
+                                          "source": "보간", "points": 0})
+                    bridged += 1
+        if bridged:
+            print(f"  짧은 공백을 메운 박스 {bridged} 개")
 
     for f in found:
         bs = per_frame[f["keyframe"]]

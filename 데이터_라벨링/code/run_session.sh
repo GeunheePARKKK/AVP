@@ -50,6 +50,9 @@ PYTHONPATH=$SCRATCH/pylibs python3 데이터_라벨링/code/detect_cones.py "$S"
     --vehicles "$R/$SUB/refined.json" --taper 1.05 \
     -o "$R/$SUB/cones.json"
 
+if [ "${SKIP_REBOUND:-0}" = "1" ]; then
+  echo "=== session_$SES : ReBound 변환 건너뜀 (SKIP_REBOUND=1) ==="
+else
 echo "=== session_$SES : 11 단계 ReBound 변환 ==="
 PYTHONPATH=$SCRATCH/pylibs python3 데이터_라벨링/code/to_rebound.py "$S" \
     --poses "$R/deskew_on" --keyframes "$R/keyframes.json" \
@@ -73,6 +76,8 @@ for d in sorted(glob.glob(rb + "/pred_bounding/*/boxes.json")):
     n += len(j["boxes"])
 print(f"  bounding/ 갱신, 박스 {n} 개")
 PY
+
+fi
 
 echo "=== session_$SES : 확인용 3D 영상 ==="
 PYTHONPATH=$SCRATCH/pylibs python3 데이터_라벨링/code/render_lidar_3d.py "$S" \
