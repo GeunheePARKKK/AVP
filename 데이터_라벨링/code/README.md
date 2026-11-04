@@ -12,7 +12,7 @@
 
 | 단계 | 하는 일 | 코드 |
 |---|---|---|
-| **1** | **녹화** | **`record_freerun.py`** ← 025~041 전부 이걸로 찍었다<br>`record.py` (SessionWriter·공용), `lidar_capture.py`, `vlp16.py`, `lidar_config.py`<br>`record_session.py` (MCU 하드웨어 동기용, 지금은 안 씀) |
+| **1** | **녹화** | **`record_freerun.py`** ← 025~041 전부 이걸로 찍었다<br>`record.py` (SessionWriter·공용), `lidar_capture.py`, `vlp16.py`, `lidar_config.py`<br>`record_session.py` (MCU 하드웨어 동기용, 지금은 안 씀)<br>**`daheng_ws_1/`** — 카메라 제어 (`sync_cam.py`·`dhcam.py`·`collect.py`) + `vendor/gxipy` |
 | | 녹화 확인 | `check_session.py` (숫자 검산), `preview_session.py` (4분할 미리보기 영상)<br>`sync_report.py`, `trim_session.py` (앞부분 잘라내기) |
 | **2** | **포인트 보정 · 오도메트리** | **`run_kiss_icp.py`** — KISS-ICP (deskew 켜고 `--voxel 0.2 --max-range 25`)<br>`vlp16_dataset.py` (pcap → 스캔+점별 타임스탬프), `analyze_deskew.py` (포즈 읽기·기하 유틸)<br>`deskew_to_shutter.py`, `shutter_real.py` (셔터 시각 보정), `export_scans.py` |
 | **3** | **드리프트 측정** | `measure_drift.py` — 포즈 정렬 후 ICP 로 오차를 잰다. 전파 간격을 정하는 근거 |

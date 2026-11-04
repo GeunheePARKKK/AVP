@@ -66,7 +66,11 @@ sys.path.insert(0, _HERE)
 
 from lidar_capture import VelodyneCapture, DATA_PORT, POSITION_PORT  # noqa: E402
 
-DEFAULT_DAHENG_WS = "/home/acelab/Documents/daheng_ws_1"
+# sync_cam 등 카메라 제어 코드가 있는 폴더. 레포 안의 사본을 먼저 보고,
+# 없으면 예전 위치를 본다. --daheng-ws 로 직접 줄 수도 있다.
+_BUNDLED_WS = os.path.join(_HERE, "daheng_ws_1")
+DEFAULT_DAHENG_WS = (_BUNDLED_WS if os.path.isdir(_BUNDLED_WS)
+                     else os.path.expanduser("~/Documents/daheng_ws_1"))
 LIDAR_IP = "192.168.1.201"
 EXPECTED_PPS = 754          # VLP-16 10 Hz 단일반사 초당 데이터 패킷
 N_WRITERS = 4

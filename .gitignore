@@ -29,3 +29,8 @@ calib_result/CAM*_overlay/
 
 # 처리 결과 (수 GB). 데이터_위치.md 참고 — 언제든 다시 만들 수 있다
 포인트보정/results/
+
+# daheng 작업폴더의 녹화 데이터는 넣지 않는다 (55GB)
+데이터_라벨링/code/daheng_ws_1/sessions/
+데이터_라벨링/code/daheng_ws_1/sessions_camonly/
+데이터_라벨링/code/daheng_ws_1/captures/

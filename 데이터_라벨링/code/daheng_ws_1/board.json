@@ -1,0 +1,6 @@
+{
+  "cols": 9,
+  "rows": 8,
+  "square_size_mm": 123.0,
+  "_comment": "cols/rows = INNER corner counts, NOT squares -- 9 across, 8 down, as the board is held in captures/. That is a 10 x 9 square board (the same board called 9 x 10 when stood the other way up). Grid confirmed by detect_board_size.py on calib_003.png; square_size_mm is a measured value, not the nominal print size."
+}
