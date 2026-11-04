@@ -72,8 +72,6 @@ def main():
     ap.add_argument("--device", default="cpu")
     args = ap.parse_args()
 
-    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
-        os.path.dirname(os.path.abspath(__file__)))), "포인트보정", "code"))
     from vlp16_dataset import VLP16PcapDataset
     from analyze_deskew import load_poses
     from mmdet3d.apis import init_model, inference_detector

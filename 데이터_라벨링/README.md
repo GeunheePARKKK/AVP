@@ -35,7 +35,7 @@
 ### 캘리브레이션
 
 `calib_result/extrinsics_all.yaml` (2026-09-28, 점-평면 RMS 8.4~17.1 mm) + `TalkFile_AVP_calib/AVP_calib/cam*_calib/results/calibration.yaml`.
-`포인트보정/code/compare_overlay.py` 로 기둥 모서리에 투영해 **리그가 움직이지 않았음을 확인**했다.
+`데이터_라벨링/code/compare_overlay.py` 로 기둥 모서리에 투영해 **리그가 움직이지 않았음을 확인**했다.
 다만 intrinsics 와 카메라 시리얼의 대응은 아직 미확정이다 (초점거리가 개체마다 1 % 차이).
 
 ---

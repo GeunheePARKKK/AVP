@@ -1,0 +1,106 @@
+diff --git a/src/annotation_editing.py b/src/annotation_editing.py
+index f19d6cb..ac023ab 100644
+--- a/src/annotation_editing.py
++++ b/src/annotation_editing.py
+@@ -67,7 +67,7 @@ class Annotation:
+ 		self.image = Image.open(self.image_path)
+ 		self.image_w = self.image.width
+ 		self.image_h = self.image.height
+-		self.image = np.asarray(self.image)
++		self.image = np.array(self.image)  # asarray 는 읽기전용이라 cv2 그리기 불가
+ 
+ 		self.lidar_sensors = lidar_sensors
+ 		self.lidar_sensor_name = lidar_sensors[0]
+@@ -535,20 +535,36 @@ class Annotation:
+ 				rendering.Open3DScene.remove_geometry(self.scene_widget.scene, box_name)
+ 				rendering.Open3DScene.remove_geometry(self.scene_widget.scene, volume_name)
+ 				rendering.Open3DScene.remove_geometry(self.scene_widget.scene, "coord_frame")
+-				curr_pos = scene_camera.unproject(event.x, event.y, self.curr_box_depth,
+-												  self.scene_widget.frame.width, self.scene_widget.frame.height)
+-				x_diff = curr_pos[0] - box_center[0]
+-				y_diff = curr_pos[1] - box_center[1]
++				# 원래는 unproject 로 커서 밑 3D 좌표를 구해 박스를 그리로 통째로 옮겼다.
++				# open3d 0.20 에서는 그 값이 마우스를 제대로 따라가지 않아 박스가 튄다.
++				# 마우스가 움직인 픽셀을 카메라 축으로 환산해 그만큼만 옮긴다.
++				if getattr(self, "_drag_prev_px", None) is None:
++					self._drag_prev_px = (event.x, event.y)
++				dpx = event.x - self._drag_prev_px[0]
++				dpy = event.y - self._drag_prev_px[1]
++				self._drag_prev_px = (event.x, event.y)
++
++				view = np.asarray(scene_camera.get_view_matrix())
++				right = view[0, :3]
++				up = view[1, :3]
++				cam_pos = -view[:3, :3].T @ view[:3, 3]
++				dist = max(np.linalg.norm(np.asarray(box_center) - cam_pos), 1.0)
++				fov = np.radians(scene_camera.get_field_of_view())
++				m_per_px = 2.0 * dist * np.tan(fov / 2.0) / max(self.scene_widget.frame.height, 1)
++				move = right * (dpx * m_per_px) + up * (-dpy * m_per_px)
++				x_diff, y_diff = float(move[0]), float(move[1])
+ 
+ 				if self.drag_operation:
+-					if self.z_drag:  # if z_drag is on, translate by z axis only
+-						box_to_drag.translate((0, 0, x_diff/10))
+-						volume_to_drag.translate((0, 0, x_diff/10))
++					if self.z_drag:  # 수직 모드: 마우스 세로 움직임을 z 로
++						dz = -dpy * m_per_px
++						box_to_drag.translate((0, 0, dz))
++						volume_to_drag.translate((0, 0, dz))
+ 					else:
+ 						box_to_drag.translate((x_diff, y_diff, 0))
+ 						volume_to_drag.translate((x_diff, y_diff, 0))
+ 				else:
+-					rotation = Quaternion(axis=[0, 0, -1], degrees=x_diff).rotation_matrix
++					# x_diff 는 이제 미터라 각도로 쓰면 거의 안 돈다. 픽셀 이동량을 쓴다.
++					rotation = Quaternion(axis=[0, 0, -1], degrees=dpx * 0.5).rotation_matrix
+ 					box_to_drag.rotate(rotation)
+ 					volume_to_drag.rotate(rotation)
+ 
+@@ -563,6 +579,7 @@ class Annotation:
+ 				self.point_cloud.post_redraw()
+ 
+ 			elif event.type == gui.MouseEvent.Type.BUTTON_UP:
++				self._drag_prev_px = None
+ 				self.update_poses()
+ 
+ 			return gui.Widget.EventCallbackResult.CONSUMED
+@@ -1055,7 +1072,7 @@ class Annotation:
+                 None
+                 """
+ 		# Extract new image from file
+-		self.image = np.asarray(Image.open(self.image_path))
++		self.image = np.array(Image.open(self.image_path))  # asarray 는 읽기전용이라 cv2 그리기 불가
+ 
+ 		for b in self.boxes_to_render:
+ 			box = Box(b[0], b[1], Quaternion(b[2]), name=b[3], score=b[4],
+diff --git a/src/lct.py b/src/lct.py
+index 1f83472..e8d3072 100644
+--- a/src/lct.py
++++ b/src/lct.py
+@@ -87,7 +87,7 @@ class Window:
+         self.lct_path = lct_dir
+         self.camera_sensors, self.lidar_sensors = self.get_cams_and_pointclouds(self.lct_path)
+         self.box_data_name = ["bounding"]
+-        self.min_confidence = 50
++        self.min_confidence = 10   # 기본 50 은 우리 검출 점수(10~55)를 대부분 가린다
+         self.highlight_faults = False
+         self.show_false_positive = False
+         self.show_incorrect_annotations = False
+@@ -118,7 +118,7 @@ class Window:
+         self.image = Image.open(self.image_path)
+         self.image_w = self.image.width
+         self.image_h = self.image.height
+-        self.image = np.asarray(self.image)
++        self.image = np.array(self.image)  # asarray 는 읽기전용이라 cv2 그리기 불가
+         self.fig, self.ax = plt.subplots(figsize=plt.figaspect(self.image))
+         self.fig.subplots_adjust(0,0,1,1)
+ 
+@@ -421,7 +421,7 @@ class Window:
+                 None
+                 """
+         # Extract new image from file
+-        self.image = np.asarray(Image.open(self.image_path))
++        self.image = np.array(Image.open(self.image_path))  # asarray 는 읽기전용이라 cv2 그리기 불가
+         for b in self.boxes_to_render:
+             box = Box(b[ORIGIN], b[SIZE], Quaternion(b[ROTATION]), name=b[ANNOTATION], score=b[CONFIDENCE], velocity=(0,0,0))
+             color = b[COLOR]

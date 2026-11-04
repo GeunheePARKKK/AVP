@@ -44,7 +44,7 @@
 ## 2. 포인트 보정 · 오도메트리
 
 ```bash
-python3 포인트보정/code/run_kiss_icp.py <세션>/lidar.pcap --voxel 0.2 --max-range 25 -o <결과>/deskew_on
+python3 데이터_라벨링/code/run_kiss_icp.py <세션>/lidar.pcap --voxel 0.2 --max-range 25 -o <결과>/deskew_on
 ```
 
 | 설정 | 값 | 왜 |
@@ -83,7 +83,7 @@ python3 포인트보정/code/run_kiss_icp.py <세션>/lidar.pcap --voxel 0.2 --m
 ## 5. 키프레임 선별
 
 ```bash
-python3 포인트보정/code/select_keyframes.py <세션> --poses <deskew_on> --min-dist 1.0 --max-gap 3.0 -o keyframes.json
+python3 데이터_라벨링/code/select_keyframes.py <세션> --poses <deskew_on> --min-dist 1.0 --max-gap 3.0 -o keyframes.json
 ```
 
 직전 키프레임에서 **1 m 이상 움직였거나 3 초가 지나면** 선택. 스캔 201 → **키프레임 25 장**, 평균 간격 1.09 m.

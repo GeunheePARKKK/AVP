@@ -1,0 +1,33 @@
+<!-- velodyne -> 4카메라 고정 조인트. 2026-09-28 -->
+<!-- rpy 는 고정축 XYZ(라디안), URDF origin 관례 -->
+  <!-- 전방 FHH26070139 -->
+  <joint name="cam_front_joint" type="fixed">
+    <parent link="velodyne"/>
+    <child link="cam_front"/>
+    <origin xyz="0.669415 -0.007431 -0.281479" rpy="-1.515928 -0.000312 -1.592790"/>
+  </joint>
+  <link name="cam_front"/>
+
+  <!-- 왼쪽 FHH26070138 -->
+  <joint name="cam_left_joint" type="fixed">
+    <parent link="velodyne"/>
+    <child link="cam_left"/>
+    <origin xyz="-0.005804 0.504076 -0.290000" rpy="-1.498431 0.026411 0.015976"/>
+  </joint>
+  <link name="cam_left"/>
+
+  <!-- 오른쪽 FHH26070137 -->
+  <joint name="cam_right_joint" type="fixed">
+    <parent link="velodyne"/>
+    <child link="cam_right"/>
+    <origin xyz="0.020788 -0.554131 -0.290000" rpy="-1.639147 0.019487 3.092802"/>
+  </joint>
+  <link name="cam_right"/>
+
+  <!-- 후방 FHH26070140 -->
+  <joint name="cam_rear_joint" type="fixed">
+    <parent link="velodyne"/>
+    <child link="cam_rear"/>
+    <origin xyz="-0.679313 -0.003691 -0.290000" rpy="-1.627304 -0.040048 1.577236"/>
+  </joint>
+  <link name="cam_rear"/>

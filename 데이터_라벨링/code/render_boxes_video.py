@@ -84,8 +84,6 @@ def main():
     args = ap.parse_args()
 
     here = os.path.dirname(os.path.abspath(__file__))
-    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(here)),
-                                    "포인트보정", "code"))
     from vlp16_dataset import VLP16PcapDataset
     from analyze_deskew import load_poses
 

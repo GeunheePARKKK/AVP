@@ -1,0 +1,74 @@
+# 4카메라 <-> Velodyne VLP-16 외부 파라미터
+# 생성 2026-09-28  (HANDOFF.md 참고)
+#
+# 좌표계
+#   velodyne : x=앞, y=왼쪽, z=위
+#   camera   : x=오른쪽, y=아래, z=앞 (OpenCV 관례)
+# T_cam_lidar : p_cam = R * p_lidar + t
+# xyz/rpy     : velodyne -> camera 링크의 URDF origin (rpy = 고정축 XYZ, 라디안)
+
+lidar_frame: velodyne
+cameras:
+  front:
+    serial: "FHH26070139"
+    frame_id: "cam_front"
+    intrinsics: "AVP_calib/cam3_calib/results/calibration.yaml"   # 시리얼 매핑 미확인
+    T_cam_lidar:
+      rows: 4
+      cols: 4
+      data: [-0.021992154, -0.999758095, 0.000311992, 0.007380430, 0.054820848, -0.001517518, -0.998495053, -0.317764196, 0.998253986, -0.021941953, 0.054840960, -0.652972511, 0.000000000, 0.000000000, 0.000000000, 1.000000000]
+    position_xyz: [0.669415, -0.007431, -0.281479]
+    rotation_rpy: [-1.515928, -0.000312, -1.592790]
+    quality:
+      num_poses: 28
+      point_to_plane_rms_mm: 8.4
+      rotation_uncertainty_deg: 0.289
+      position_uncertainty_cm: 0.5
+
+  left:
+    serial: "FHH26070138"
+    frame_id: "cam_left"
+    intrinsics: "AVP_calib/cam1_calib/results/calibration.yaml"   # 시리얼 매핑 미확인
+    T_cam_lidar:
+      rows: 4
+      cols: 4
+      data: [0.999523681, 0.015969516, -0.026408070, -0.009906697, -0.027490626, 0.071872199, -0.997034930, -0.325528736, -0.014024160, 0.997285998, 0.072276977, -0.481828915, 0.000000000, 0.000000000, 0.000000000, 1.000000000]
+    position_xyz: [-0.005804, 0.504076, -0.290000]
+    rotation_rpy: [-1.498431, 0.026411, 0.015976]
+    quality:
+      num_poses: 22
+      point_to_plane_rms_mm: 14.0
+      rotation_uncertainty_deg: 0.459
+      position_uncertainty_cm: 1.1
+
+  right:
+    serial: "FHH26070137"
+    frame_id: "cam_right"
+    intrinsics: "AVP_calib/cam2_calib/results/calibration.yaml"   # 시리얼 매핑 미확인
+    T_cam_lidar:
+      rows: 4
+      cols: 4
+      data: [-0.998620319, 0.048762393, -0.019485579, 0.042129685, 0.022747940, 0.067268361, -0.997475563, -0.252465347, -0.047328532, -0.996542622, -0.068284796, -0.571033521, 0.000000000, 0.000000000, 0.000000000, 1.000000000]
+    position_xyz: [0.020788, -0.554131, -0.290000]
+    rotation_rpy: [-1.639147, 0.019487, 3.092802]
+    quality:
+      num_poses: 31
+      point_to_plane_rms_mm: 14.6
+      rotation_uncertainty_deg: 0.683
+      position_uncertainty_cm: 2.1
+
+  rear:
+    serial: "FHH26070140"
+    frame_id: "cam_rear"
+    intrinsics: "AVP_calib/cam4_calib/results/calibration.yaml"   # 시리얼 매핑 미확인
+    T_cam_lidar:
+      rows: 4
+      cols: 4
+      data: [-0.006434278, 0.999177487, 0.040036864, 0.010927807, 0.056218894, 0.040335815, -0.997603357, -0.250965880, -0.998397734, -0.004168030, -0.056432185, -0.694605054, 0.000000000, 0.000000000, 0.000000000, 1.000000000]
+    position_xyz: [-0.679313, -0.003691, -0.290000]
+    rotation_rpy: [-1.627304, -0.040048, 1.577236]
+    quality:
+      num_poses: 32
+      point_to_plane_rms_mm: 17.1
+      rotation_uncertainty_deg: 0.578
+      position_uncertainty_cm: 2.0

@@ -48,6 +48,12 @@ BAYER_CV = {
     "BayerGR8": cv2.COLOR_BayerGR2BGR, "BayerBG8": cv2.COLOR_BayerBG2BGR,
 }
 
+# 10/12 bit 도 디베이어 코드는 같다. boost() 가 퍼센타일로 정규화하므로
+# 비트깊이를 따로 안 넘겨도 된다.
+for _b in ("RG", "GB", "GR", "BG"):
+    for _d in ("10", "12", "16"):
+        BAYER_CV[f"Bayer{_b}{_d}"] = BAYER_CV[f"Bayer{_b}8"]
+
 
 def load_calib(cam):
     with open(os.path.join(CALIB_DIR, "extrinsics_all.yaml")) as f:
@@ -65,7 +71,10 @@ def load_calib(cam):
 
 
 def boost(img):
-    """raw Bayer 는 어두우므로 퍼센타일 정규화 + 감마로 보이게 만든다."""
+    """raw Bayer 는 어두우므로 퍼센타일 정규화 + 감마로 보이게 만든다.
+
+    12 bit 입력도 그대로 받는다. 퍼센타일로 정규화하므로 스케일은
+    알아서 맞고, 결과는 항상 8 bit 다."""
     lo, hi = np.percentile(img, (1, 99.5))
     if hi <= lo:
         return img
